@@ -1024,7 +1024,7 @@ const ICE = { iceServers: [
    що мовчав, хоча ICE був connected. */
 const CHAN = { ordered: true, negotiated: true, id: 0 };
 
-const BUILD = '2026-08-23h';
+const BUILD = '2026-08-23i';
 
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
@@ -1089,6 +1089,7 @@ class Net {
     this.txCmd = 0; this.rxCmd = 0; this.rxAny = 0; this.rtt = 0;
     this.state = 'off';
   }
+  get live() { return this.state === 'live'; }
   get solo() { return this.state === 'off'; }
 
   setState(s) {

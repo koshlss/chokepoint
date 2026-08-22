@@ -23,6 +23,19 @@ window.addEventListener('load', async () => {
   say('версія: ' + (w.CHOKEPOINT && w.CHOKEPOINT.BUILD));
   check('гра стартувала', w.CHOKEPOINT && w.CHOKEPOINT.sim && w.CHOKEPOINT.sim.tick >= 0);
 
+  /* 0. Цілість інтерфейсу мережі. Геттер live одного разу зник під час
+        редагування — гра мовчки грала соло, і жодна перевірка цього не
+        бачила. Тепер бачить. */
+  const n = w.CHOKEPOINT.net;
+  check('net.live визначений', typeof n.live === 'boolean', 'зараз ' + typeof n.live);
+  check('net.solo визначений', typeof n.solo === 'boolean', 'зараз ' + typeof n.solo);
+  for (const m of ['host','join','confirm','reset','send','diag','setState','wire','watch','goLive'])
+    check('є метод net.' + m, typeof n[m] === 'function');
+  for (const m of ['queue','publishTo','accept','ready','merged'])
+    check('є метод Lockstep.' + m, typeof w.CHOKEPOINT.Lockstep.prototype[m] === 'function');
+  for (const m of ['step','apply','hash','recomputeFlow','pickTarget','refund','upgradeCost','nextInfo'])
+    check('є метод Sim.' + m, typeof w.CHOKEPOINT.Sim.prototype[m] === 'function');
+
   // 1. кожен інструмент арсеналу
   const tools = d.querySelectorAll('.tool');
   check('арсенал побудовано', tools.length >= 9, tools.length + ' кнопок');
