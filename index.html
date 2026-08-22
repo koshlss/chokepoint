@@ -267,6 +267,7 @@ canvas{display:block; width:100%; height:auto; touch-action:none; cursor:crossha
     </div>
     <div>
       <h3>Кооператив удвох</h3>
+      <p><b>Потрібен локальний файл.</b> На цій опублікованій сторінці кооп не запрацює: пісочниця блокує WebRTC. Візьміть <code>index.html</code>, і хай кожен відкриє його в себе — це один самодостатній файл, ставити нічого не треба.</p>
       <p><b>Господар</b> тисне «Створити гру», копіює код і кидає другу в чат. <b>Гість</b> вставляє код, тисне «Застосувати», отримує код-відповідь і шле назад. Господар вставляє відповідь — і гра починається.</p>
       <p>З'єднання пряме, без сервера. Життя спільні, золото в кожного своє. Паузи й прискорення в кооперативі немає.</p>
     </div>
@@ -993,6 +994,13 @@ const ICE = { iceServers: [
   { urls: 'stun:stun1.l.google.com:19302' },
 ] };
 
+/* WebRTC є не скрізь: у пісочниці опублікованої сторінки його вимикають.
+   Ловимо це один раз тут, щоб замість «not a constructor» показати людям
+   зрозуміле пояснення. */
+const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
+          : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
+          : null;
+
 class Net {
   constructor() {
     this.pc = null; this.dc = null;
@@ -1029,7 +1037,7 @@ class Net {
 
   async host(setup) {
     this.me = 0;
-    this.pc = new RTCPeerConnection(ICE);
+    this.pc = new RTC(ICE);
     this.wire(this.pc.createDataChannel('lockstep', { ordered: true }));
     await this.pc.setLocalDescription(await this.pc.createOffer());
     await iceDone(this.pc, 3500);
@@ -1040,7 +1048,7 @@ class Net {
     const m = await unpackCode(code);
     if (m.r !== 'o') throw new Error('це не код запрошення');
     this.me = 1;
-    this.pc = new RTCPeerConnection(ICE);
+    this.pc = new RTC(ICE);
     this.pc.ondatachannel = e => this.wire(e.channel);
     await this.pc.setRemoteDescription(m.sdp);
     await this.pc.setLocalDescription(await this.pc.createAnswer());
@@ -1349,7 +1357,20 @@ net.onState   = s => {
   }
 };
 
+/* Якщо WebRTC недоступний — кажемо про це одразу й пояснюємо вихід,
+   а не даємо натиснути кнопку й отримати помилку. */
+function coopBlocked() {
+  if (RTC) return false;
+  el.host.disabled = true; el.use.disabled = true;
+  el.netState.className = 'netState dead';
+  el.netState.innerHTML = '<span class="dot"></span>Недоступно';
+  el.coopHint.textContent = 'Тут кооп не працює: пісочниця сторінки блокує WebRTC. ' +
+    'Відкрий файл index.html локально — там усе є.';
+  return true;
+}
+
 el.host.onclick = async () => {
+  if (coopBlocked()) return;
   if (net.state !== 'off') { say('З’єднання вже почато', 'bad'); return; }
   el.coopHint.textContent = 'Готую код…';
   try {
@@ -1360,6 +1381,7 @@ el.host.onclick = async () => {
 };
 
 el.use.onclick = async () => {
+  if (coopBlocked()) return;
   const code = el.code.value.trim();
   if (!code) { el.coopHint.textContent = 'Спершу встав код.'; return; }
   try {
@@ -1726,6 +1748,7 @@ function drawCreep(c, alpha) {
 /* ── старт ───────────────────────────────────────────────────────────── */
 resize();
 boot();
+coopBlocked();     // одразу показати стан кооперативу, не чекаючи кліку
 window.CHOKEPOINT = {
   get sim() { return sim; }, get ls() { return ls; }, get net() { return net; },
   Sim, Lockstep, Net,
