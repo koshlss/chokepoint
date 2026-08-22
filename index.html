@@ -1024,7 +1024,7 @@ const ICE = { iceServers: [
    що мовчав, хоча ICE був connected. */
 const CHAN = { ordered: true, negotiated: true, id: 0 };
 
-const BUILD = '2026-08-23e';
+const BUILD = '2026-08-23g';
 
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
@@ -1480,6 +1480,9 @@ function lsDiag() {
          ' · черга напарника ' + (ls ? ls.remote.size : 0) +
          ' · відправлено ' + net.txCmd + ' · отримано команд ' + net.rxCmd +
          ' · усього повідомлень ' + net.rxAny +
+         ' · мережа ' + (net.live ? 'так' : 'ні') +
+         (sim.over ? ' · ЗАБІГ ЗАВЕРШЕНО' : '') +
+         (desync ? ' · РОЗСИНХРОН' : '') +
          (stalled ? ' · ЧЕКАЮ' : '');
 }
 net.onDiag = () => {
