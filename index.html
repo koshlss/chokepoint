@@ -1025,7 +1025,7 @@ const ICE = { iceServers: [
    що мовчав, хоча ICE був connected. */
 const CHAN = { ordered: true, negotiated: true, id: 0 };
 
-const BUILD = '2026-08-23m';
+const BUILD = '2026-08-23n';
 
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
@@ -1140,6 +1140,11 @@ class Net {
       this.rxAny++;
       let m; try { m = JSON.parse(ev.data); } catch (e) { this.note('прийшло нечитабельне'); return; }
       if (m.t !== 'ping' && m.t !== 'pong' && m.t !== 'c') this.note('прийшло: ' + m.t);
+      try { this.dispatch(m); } catch (e) { this.note('ПОМИЛКА на ' + m.t + ': ' + (e && e.message ? e.message : e)); }
+    };
+  }
+  dispatch(m) {
+    {
       if (m.t === 'c') { this.rxCmd++; if (this.onCmds) this.onCmds(m.g, m.k, m.m); }
       else if (m.t === 'h' && this.onHash) this.onHash(m.g, m.k, m.h);
       else if (m.t === 'r' && this.onRestart) this.onRestart(m.g, m.s);
@@ -1636,7 +1641,24 @@ el.copy.onclick = () => {
 };
 
 /* ── цикл ────────────────────────────────────────────────────────────── */
+/* Виклик наступного кадру стоїть в кінці, тож будь-який виняток усередині
+   обривав цикл НАЗАВЖДИ: сторінка жива, мережа приймає дані, а гра стоїть.
+   Саме так у гостя тік застигав на нулі. Тепер помилка не вбиває цикл і
+   потрапляє в журнал. */
 function frame(now) {
+  try { frameBody(now); }
+  catch (e) {
+    if (!frame.told) {
+      frame.told = true;
+      const msg = (e && e.message) ? e.message : String(e);
+      if (net.note) net.note('ПОМИЛКА В ЦИКЛІ: ' + msg);
+      say('Помилка в циклі гри: ' + msg, 'bad');
+    }
+  }
+  requestAnimationFrame(frame);
+}
+
+function frameBody(now) {
   if (!last) last = now;
   let dt = now - last; last = now;
   if (dt > 250) dt = 250;
@@ -1671,7 +1693,6 @@ function frame(now) {
   }
   render(sim.frozen || sim.over ? 1 : Math.min(1, acc / stepMs));
   hud();
-  requestAnimationFrame(frame);
 }
 
 function compareHash(t) {
