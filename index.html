@@ -137,6 +137,9 @@ canvas{display:block; width:100%; height:auto; touch-action:none; cursor:crossha
 .netState.waiting{color:var(--brass)} .netState.waiting .dot{background:var(--brass)}
 .netState.dead{color:var(--coral)} .netState.dead .dot{background:var(--coral)}
 .hint{font-size:11.5px; color:var(--text-faint); line-height:1.4}
+.diag{font-family:var(--mono); font-size:10.5px; color:var(--steel); border-top:1px solid var(--line-soft);
+  padding-top:6px; min-height:14px}
+.diag:empty{display:none}
 
 /* ─── журнал ─── */
 .aside{display:flex; flex-direction:column; gap:6px; margin-top:10px}
@@ -239,6 +242,7 @@ canvas{display:block; width:100%; height:auto; touch-action:none; cursor:crossha
             <button id="btnCopy">Копіювати код</button>
             <span class="hint" id="coopHint">Обмін кодами — через будь-який чат.</span>
           </div>
+          <div class="hint diag" id="coopDiag"></div>
         </div>
         <h2>Журнал</h2>
         <div class="log" id="log"></div>
@@ -950,6 +954,8 @@ class Sim {
    раз на дві секунди це підтверджує.
    ══════════════════════════════════════════════════════════════════════ */
 
+/* ===NET-CORE-BEGIN===  (межа для офлайн-перевірки з'єднання) */
+
 /* Код запрошення: JSON → deflate → base64url. SDP довгий, стиснення
    робить його придатним для вставки в чат. */
 async function packCode(obj) {
@@ -989,9 +995,22 @@ function iceDone(pc, ms) {
   });
 }
 
+/* Скільки й яких адрес знайшлося. Це головна діагностика: якщо немає
+   ні srflx, ні relay — назовні вас не видно, і прямий зв'язок неможливий. */
+function candKind(c) {
+  if (!c || !c.candidate) return null;
+  const m = /(?: typ )(\w+)/.exec(c.candidate);
+  return m ? m[1] : null;
+}
+
+/* STUN лише повідомляє твою зовнішню адресу. Якщо провайдер за CGNAT або
+   NAT симетричний, прямого маршруту між гравцями немає — тоді потрібен
+   TURN, який ретранслює трафік. Через нього йдуть тільки команди. */
 const ICE = { iceServers: [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'turn:openrelay.metered.ca:80',  username:'openrelayproject', credential:'openrelayproject' },
+  { urls: 'turn:openrelay.metered.ca:443', username:'openrelayproject', credential:'openrelayproject' },
 ] };
 
 /* WebRTC є не скрізь: у пісочниці опублікованої сторінки його вимикають.
@@ -1007,7 +1026,31 @@ class Net {
     this.state = 'off';          // off | waiting | live | dead
     this.me = 0;                 // 0 — господар, 1 — гість
     this.rtt = 0;
+    this.cand = { host:0, srflx:0, relay:0 };
+    this.iceErr = 0;
     this.onCmds = null; this.onHash = null; this.onRestart = null; this.onState = null;
+    this.onDiag = null;
+  }
+  diag() {
+    if (!this.pc) return 'з’єднання не почато';
+    const c = this.cand;
+    return 'адрес: локальних ' + c.host + ', зовнішніх ' + c.srflx + ', через ретранслятор ' + c.relay +
+           (this.iceErr ? ' · помилок STUN/TURN: ' + this.iceErr : '') +
+           ' · канал: ' + this.pc.iceConnectionState;
+  }
+  /* Спільна обв'язка для обох сторін: рахуємо адреси й показуємо стан. */
+  watch(pc) {
+    pc.onicecandidate = e => {
+      const k = candKind(e.candidate);
+      if (k && this.cand[k] !== undefined) this.cand[k]++;
+      if (this.onDiag) this.onDiag();
+    };
+    pc.onicecandidateerror = () => { this.iceErr++; if (this.onDiag) this.onDiag(); };
+    pc.oniceconnectionstatechange = () => {
+      const s = pc.iceConnectionState;
+      if (s === 'failed' || s === 'disconnected') this.setState('dead');
+      if (this.onDiag) this.onDiag();
+    };
   }
   get live() { return this.state === 'live'; }
   get solo() { return this.state === 'off'; }
@@ -1038,9 +1081,10 @@ class Net {
   async host(setup) {
     this.me = 0;
     this.pc = new RTC(ICE);
+    this.watch(this.pc);
     this.wire(this.pc.createDataChannel('lockstep', { ordered: true }));
     await this.pc.setLocalDescription(await this.pc.createOffer());
-    await iceDone(this.pc, 3500);
+    await iceDone(this.pc, 9000);
     this.setState('waiting');
     return packCode({ r:'o', sdp: this.pc.localDescription, s: setup });
   }
@@ -1049,10 +1093,11 @@ class Net {
     if (m.r !== 'o') throw new Error('це не код запрошення');
     this.me = 1;
     this.pc = new RTC(ICE);
+    this.watch(this.pc);
     this.pc.ondatachannel = e => this.wire(e.channel);
     await this.pc.setRemoteDescription(m.sdp);
     await this.pc.setLocalDescription(await this.pc.createAnswer());
-    await iceDone(this.pc, 3500);
+    await iceDone(this.pc, 9000);
     this.setState('waiting');
     return { code: await packCode({ r:'a', sdp: this.pc.localDescription }), s: m.s };
   }
@@ -1062,6 +1107,8 @@ class Net {
     await this.pc.setRemoteDescription(m.sdp);
   }
 }
+
+/* ===NET-CORE-END=== */
 
 /* Планувальник. Тік N виконується лише коли є команди ВІД УСІХ за цей
    тік. Свої команди публікуються на DELAY тіків уперед — цей запас і
@@ -1123,6 +1170,7 @@ const el = {
   host: document.getElementById('btnHost'), use: document.getElementById('btnUse'),
   copy: document.getElementById('btnCopy'), code: document.getElementById('codeBox'),
   netState: document.getElementById('netState'), coopHint: document.getElementById('coopHint'),
+  coopDiag: document.getElementById('coopDiag'),
   mapSel: document.getElementById('mapSel'), modeSel: document.getElementById('modeSel'),
   mapNote: document.getElementById('mapNote'), next: document.getElementById('rNext'),
 };
@@ -1341,6 +1389,13 @@ net.onCmds = (g, tick, cmds) => {
 };
 net.onHash = (g, tick, h) => { if (g === gen) { theirHash.set(tick, h); compareHash(tick); } };
 net.onRestart = (g, s) => { writeSetup(s); boot(g); };
+net.onDiag = () => {
+  el.coopDiag.textContent = net.diag();
+  // Якщо зовнішніх адрес не знайшлося взагалі — попереджаємо одразу
+  if (net.state === 'waiting' && net.cand.srflx === 0 && net.cand.relay === 0 && net.iceErr > 0)
+    el.coopHint.textContent = 'STUN/TURN не відповідають — назовні вас не видно. ' +
+      'Спрацює лише в межах однієї мережі.';
+};
 net.onState   = s => {
   const cls = s === 'live' ? 'live' : s === 'waiting' ? 'waiting' : s === 'dead' ? 'dead' : '';
   el.netState.className = 'netState ' + cls;
@@ -1352,8 +1407,11 @@ net.onState   = s => {
     say('З’єднання встановлено', 'good');
     boot(0);                      // обидві сторони стартують з тіку 0, покоління 0
   } else if (s === 'dead') {
-    el.coopHint.textContent = 'Канал розірвано.';
-    say('Напарник від’єднався', 'bad');
+    el.coopHint.textContent = net.cand.relay === 0
+      ? 'Не вдалось з’єднатись. Прямого маршруту немає, ретранслятор теж не дав адрес.'
+      : 'Канал розірвано.';
+    el.coopDiag.textContent = net.diag();
+    say('Кооп: з’єднання не встановлено', 'bad');
   }
 };
 
@@ -1416,8 +1474,11 @@ function frame(now) {
   const wired = net.live;
   const sender = wired ? ((t, b) => net.send({ t:'c', g:gen, k:t, m:b })) : null;
 
-  // На паузі цикл не зупиняємо: тіки йдуть, світ стоїть, команди доходять.
-  if (!sim.over && !desync && (net.solo || wired)) {
+  /* Гра йде завжди, крім кінця забігу й розсинхрону. Поки чекаємо
+     напарника, крутимо як соло — при з'єднанні все одно почнеться
+     наново з тіку 0. Раніше тут стояла умова, від якої гра завмирала
+     одразу після натискання «Створити гру». */
+  if (!sim.over && !desync) {
     acc += dt * (sim.frozen ? 1 : speed);
     let guard = 0;
     stalled = false;
