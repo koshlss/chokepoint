@@ -52,9 +52,12 @@ $tmp = "$env:TEMP\mtd-bench"
 Start-Process $chrome -ArgumentList @(
   '--headless=new','--disable-gpu','--no-sandbox','--no-first-run',
   "--user-data-dir=$tmp\prof",'--dump-dom','--virtual-time-budget=900000',
-  'file:///C:/Users/KOsh/Desktop/MazeTD/bench.html?map=0&mode=1&runs=10&max=26'
+  'file:///E:/Claude/MazeTD/bench.html?map=0&mode=1&runs=10&max=26'
 ) -RedirectStandardOutput "$tmp\out.txt" -NoNewWindow -Wait
 ```
+
+`build-bench.ps1` шукає файли поруч із собою, тож переносити проєкт можна
+куди завгодно — правити треба лише `file:///` у команді запуску.
 
 Окремий профіль (`--user-data-dir`) обов'язковий — інакше Chrome віддасть
 керування вже запущеному екземпляру й вивід буде порожній.
