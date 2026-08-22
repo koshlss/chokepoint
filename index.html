@@ -1024,7 +1024,7 @@ const ICE = { iceServers: [
    що мовчав, хоча ICE був connected. */
 const CHAN = { ordered: true, negotiated: true, id: 0 };
 
-const BUILD = '2026-08-23g';
+const BUILD = '2026-08-23h';
 
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
@@ -1038,7 +1038,8 @@ class Net {
     this.rtt = 0;
     this.cand = { host:0, srflx:0, relay:0 };
     this.txCmd = 0; this.rxCmd = 0; this.rxAny = 0;
-    this.gotChannel = false; this.peerBuild = null;
+    this.gotChannel = false; this.peerBuild = null; this.nonce = 0;
+    this.hist = [];
     this.iceErr = 0;
     this.onCmds = null; this.onHash = null; this.onRestart = null; this.onState = null;
     this.onDiag = null;
@@ -1053,7 +1054,7 @@ class Net {
            ' · транспорт: ' + (this.pc.sctp ? this.pc.sctp.state : 'нема') +
            ' · зв’язок: ' + this.pc.connectionState +
            ' · канал даних: ' + dc +
-           ' · стан: ' + this.state +
+           ' · стан: ' + this.state + ' (' + this.hist.join('→') + ')' +
            (this.peerBuild ? ' · збірка напарника: ' + this.peerBuild : '');
   }
   watch(pc) {
@@ -1090,7 +1091,12 @@ class Net {
   }
   get solo() { return this.state === 'off'; }
 
-  setState(s) { this.state = s; if (this.onState) this.onState(s); }
+  setState(s) {
+    this.state = s;
+    this.hist.push(s);
+    if (this.hist.length > 8) this.hist.shift();
+    if (this.onState) this.onState(s);
+  }
 
   wire(dc) {
     this.dc = dc; this.gotChannel = true;
@@ -1147,13 +1153,17 @@ class Net {
 
   async host(setup) {
     this.me = 0;
+    /* Мітка запрошення. Відповідь мусить її повернути — інакше це
+       відповідь на ПОЗАМИНУЛЕ запрошення, скопійована з чату, і вона
+       з'єднає з уже мертвою стороною. */
+    this.nonce = Math.floor(Math.random() * 1e9);
     this.pc = new RTC(ICE);
     this.watch(this.pc);
     this.wire(this.pc.createDataChannel('lockstep', CHAN));
     await this.pc.setLocalDescription(await this.pc.createOffer());
     await iceDone(this.pc, 9000);
     if (this.state !== 'live') this.setState('waiting');
-    return packCode({ r:'o', sdp: this.pc.localDescription, s: setup, b: BUILD });
+    return packCode({ r:'o', sdp: this.pc.localDescription, s: setup, b: BUILD, n: this.nonce });
   }
   async join(code) {
     const m = await unpackCode(code);
@@ -1168,11 +1178,13 @@ class Net {
     await iceDone(this.pc, 9000);
     if (this.state !== 'live') this.setState('waiting');
     this.peerBuild = m.b || '?';
-    return { code: await packCode({ r:'a', sdp: this.pc.localDescription, b: BUILD }), s: m.s, b: this.peerBuild };
+    return { code: await packCode({ r:'a', sdp: this.pc.localDescription, b: BUILD, n: m.n }), s: m.s, b: this.peerBuild };
   }
   async confirm(code) {
     const m = await unpackCode(code);
     if (m.r !== 'a') throw new Error('це не код відповіді');
+    if (this.nonce && m.n !== this.nonce)
+      throw new Error('це відповідь на старе запрошення — візьміть найсвіжіші коди');
     this.peerBuild = m.b || '?';
     await this.pc.setRemoteDescription(m.sdp);
   }
