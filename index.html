@@ -1024,7 +1024,7 @@ const ICE = { iceServers: [
    що мовчав, хоча ICE був connected. */
 const CHAN = { ordered: true, negotiated: true, id: 0 };
 
-const BUILD = '2026-08-23d';
+const BUILD = '2026-08-23e';
 
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
@@ -1037,7 +1037,7 @@ class Net {
     this.me = 0;                 // 0 — господар, 1 — гість
     this.rtt = 0;
     this.cand = { host:0, srflx:0, relay:0 };
-    this.txCmd = 0; this.rxCmd = 0;
+    this.txCmd = 0; this.rxCmd = 0; this.rxAny = 0;
     this.gotChannel = false; this.peerBuild = null;
     this.iceErr = 0;
     this.onCmds = null; this.onHash = null; this.onRestart = null; this.onState = null;
@@ -1070,13 +1070,24 @@ class Net {
     };
   }
   reset() {
-    if (this.pc) { try { this.pc.close(); } catch (e) {} }
-    this.pc = null; this.dc = null; this.gotChannel = false;
+    /* Недостатньо закрити з'єднання: старий канал зберігає обробники й
+       далі приймає повідомлення, тоді як відправляння вже йде в новий.
+       Саме через це частина даних «проходила», а команди — ні. */
+    if (this.dc) {
+      this.dc.onopen = this.dc.onclose = this.dc.onerror = this.dc.onmessage = null;
+      try { this.dc.close(); } catch (e) {}
+    }
+    if (this.pc) {
+      this.pc.onicecandidate = this.pc.oniceconnectionstatechange = null;
+      this.pc.onicecandidateerror = null;
+      try { this.pc.close(); } catch (e) {}
+    }
+    if (this.hiTimer) { clearTimeout(this.hiTimer); this.hiTimer = 0; }
+    this.pc = null; this.dc = null; this.gotChannel = false; this.peerBuild = null;
     this.cand = { host:0, srflx:0, relay:0 }; this.iceErr = 0;
-    this.txCmd = 0; this.rxCmd = 0; this.rtt = 0;
+    this.txCmd = 0; this.rxCmd = 0; this.rxAny = 0; this.rtt = 0;
     this.state = 'off';
   }
-  get live() { return this.state === 'live'; }
   get solo() { return this.state === 'off'; }
 
   setState(s) { this.state = s; if (this.onState) this.onState(s); }
@@ -1085,19 +1096,43 @@ class Net {
     this.dc = dc; this.gotChannel = true;
     /* Канал може бути вже відкритим до того, як ми повісимо обробник,
        тож перевіряємо стан напряму, а не покладаємось лише на подію. */
-    const opened = () => { if (this.state !== 'live') { this.setState('live'); this.ping(); } };
+    /* Відкритий канал ще не означає, що на тому кінці хтось є: він може
+       лишатись від старої спроби. Тому спершу вітаємось, і живим
+       вважаємо з'єднання лише коли привітання прийшло у відповідь. */
+    const opened = () => {
+      if (this.state === 'live') return;
+      this.send({ t:'hi', b: BUILD });
+      if (this.hiTimer) clearTimeout(this.hiTimer);
+      this.hiTimer = setTimeout(() => {
+        if (this.state !== 'live') this.setState('stale');
+      }, 8000);
+    };
     dc.onopen = opened;
     if (dc.readyState === 'open') opened();
     dc.onclose = () => this.setState('dead');
     dc.onerror = () => this.setState('dead');
     dc.onmessage = ev => {
+      if (this.dc !== dc) return;        // повідомлення зі старого каналу
+      this.rxAny++;
       let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       if (m.t === 'c') { this.rxCmd++; if (this.onCmds) this.onCmds(m.g, m.k, m.m); }
       else if (m.t === 'h' && this.onHash) this.onHash(m.g, m.k, m.h);
       else if (m.t === 'r' && this.onRestart) this.onRestart(m.g, m.s);
+      else if (m.t === 'hi') {
+        this.peerBuild = m.b || '?';
+        this.send({ t:'hi2', b: BUILD });
+        this.goLive();
+      }
+      else if (m.t === 'hi2') { this.peerBuild = m.b || '?'; this.goLive(); }
       else if (m.t === 'ping') this.send({ t:'pong', at:m.at });
       else if (m.t === 'pong') this.rtt = Math.round(performance.now() - m.at);
     };
+  }
+  goLive() {
+    if (this.state === 'live') return;
+    if (this.hiTimer) { clearTimeout(this.hiTimer); this.hiTimer = 0; }
+    this.setState('live');
+    this.ping();
   }
   ping() {
     if (!this.live) return;
@@ -1443,7 +1478,8 @@ net.onRestart = (g, s) => {
 function lsDiag() {
   return 'тік ' + sim.tick + ' · покоління ' + gen +
          ' · черга напарника ' + (ls ? ls.remote.size : 0) +
-         ' · відправлено ' + net.txCmd + ' · отримано ' + net.rxCmd +
+         ' · відправлено ' + net.txCmd + ' · отримано команд ' + net.rxCmd +
+         ' · усього повідомлень ' + net.rxAny +
          (stalled ? ' · ЧЕКАЮ' : '');
 }
 net.onDiag = () => {
@@ -1454,10 +1490,10 @@ net.onDiag = () => {
       'Спрацює лише в межах однієї мережі.';
 };
 net.onState   = s => {
-  const cls = s === 'live' ? 'live' : s === 'waiting' ? 'waiting' : s === 'dead' ? 'dead' : '';
+  const cls = s === 'live' ? 'live' : s === 'waiting' ? 'waiting' : (s === 'dead' || s === 'stale') ? 'dead' : '';
   el.netState.className = 'netState ' + cls;
   el.netState.innerHTML = '<span class="dot"></span>' +
-    (s === 'live' ? ('Гравець ' + (net.me + 1)) : s === 'waiting' ? 'Чекаю' : s === 'dead' ? 'Розрив' : 'Соло');
+    (s === 'live' ? ('Гравець ' + (net.me + 1)) : s === 'waiting' ? 'Чекаю' : s === 'dead' ? 'Розрив' : s === 'stale' ? 'Немає відповіді' : 'Соло');
   if (s === 'live') {
     paused = false; speed = 1; el.speed.textContent = '1×'; el.pause.textContent = 'Пауза';
     el.code.value = '';
@@ -1473,6 +1509,10 @@ net.onState   = s => {
     } else {
       el.coopHint.textContent = 'З’єднано. Чекаю налаштування господаря…';
     }
+  } else if (s === 'stale') {
+    el.coopHint.textContent = 'Канал відкрито, але напарник мовчить — код застарів. ' +
+      'Обидва перезавантажте сторінку й обміняйтесь кодами наново, без пауз.';
+    say('Напарник не відповів на привітання', 'bad');
   } else if (s === 'dead') {
     el.coopHint.textContent = net.cand.relay === 0
       ? 'Не вдалось з’єднатись. Прямого маршруту немає, ретранслятор теж не дав адрес.'
