@@ -1,8 +1,9 @@
 # Chokepoint
 
 Кооперативний tower defense у браузері. Один самодостатній файл — `index.html`,
-без збірки, без залежностей. Опубліковано як сторінку:
-https://claude.ai/code/artifact/cf84fd48-c568-4359-a0e9-f6a347e5f8b1
+без збірки, без залежностей, без сторонніх бібліотек.
+
+Грати можна просто відкривши `index.html` у браузері.
 
 ## Що це
 
@@ -38,7 +39,14 @@ https://claude.ai/code/artifact/cf84fd48-c568-4359-a0e9-f6a347e5f8b1
 | `index.html` | гра цілком: сим-ядро, мережа, рендер |
 | `bench-player.js` | бот і збір статистики для прогонів |
 | `build-bench.ps1` | збирає `bench.html`, вирізаючи ядро з `index.html` |
-| `bench.html` | генерується, у git не потрібен |
+| `synctest.ps1` | двоє клієнтів із затримкою старту + контрольний сценарій |
+| `nettest.ps1` | повний обмін кодами між двома з'єднаннями в одному вікні |
+| `clicktest.html` | тисне всі кнопки гри в iframe і ловить винятки |
+
+Згенеровані `bench.html`, `synctest.html`, `nettest.html` у git не входять.
+
+Перевірки живуть на headless Chrome і ганяють **той самий код**, що й гра:
+ядро вирізається з `index.html` між маркерами, а не копіюється.
 
 ## Стенд
 
@@ -52,7 +60,7 @@ $tmp = "$env:TEMP\mtd-bench"
 Start-Process $chrome -ArgumentList @(
   '--headless=new','--disable-gpu','--no-sandbox','--no-first-run',
   "--user-data-dir=$tmp\prof",'--dump-dom','--virtual-time-budget=900000',
-  'file:///E:/Claude/MazeTD/bench.html?map=0&mode=1&runs=10&max=26'
+  "file:///$($PWD.Path.Replace('\','/'))/bench.html?map=0&mode=1&runs=10&max=26"
 ) -RedirectStandardOutput "$tmp\out.txt" -NoNewWindow -Wait
 ```
 
