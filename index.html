@@ -1024,7 +1024,7 @@ const ICE = { iceServers: [
    що мовчав, хоча ICE був connected. */
 const CHAN = { ordered: true, negotiated: true, id: 0 };
 
-const BUILD = '2026-08-23j';
+const BUILD = '2026-08-23k';
 
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
@@ -1558,7 +1558,13 @@ function coopBlocked() {
 
 el.host.onclick = async () => {
   if (coopBlocked()) return;
-  net.reset();                        // нова гра — нове з’єднання, без решток старого
+  if (net.state === 'waiting' || net.state === 'live') {
+    el.coopHint.textContent = net.state === 'live'
+      ? 'Ви вже з’єднані.'
+      : 'Запрошення вже створено — надішли його й чекай відповідь. Щоб почати з нуля, перезавантаж сторінку.';
+    el.code.select(); return;
+  }
+  net.reset();
   el.coopHint.textContent = 'Готую код…';
   try {
     el.code.value = await net.host(readSetup());
@@ -1581,11 +1587,19 @@ el.use.onclick = async () => {
     /* Дію обирає САМ КОД, а не внутрішній стан. Раніше після невдалої
        спроби гість не міг приєднатись заново без перезавантаження. */
     if (m.r === 'o') {
+      /* Друге натискання створює НОВЕ з'єднання, а господар лишається з
+         першим — і обидва застрягають. Тому просто не даємо. */
+      if (net.state === 'waiting' || net.state === 'live') {
+        el.coopHint.textContent = net.state === 'live'
+          ? 'Ви вже з’єднані.'
+          : 'Ти вже приєднався. Чекай, поки господар вставить твою відповідь — не тисни вдруге. Щоб почати з нуля, перезавантаж сторінку.';
+        return;
+      }
       const r = await net.join(code);
       writeSetup(r.s);
       if (r.b && r.b !== BUILD) say('УВАГА: різні версії файлу (' + BUILD + ' проти ' + r.b + ')', 'bad');
       el.code.value = r.code; el.code.select();
-      el.coopHint.textContent = 'Надішли цю відповідь господарю. Він має вставити її одразу.';
+      el.coopHint.textContent = 'Готово. Надішли цю відповідь господарю й БІЛЬШЕ НІЧОГО НЕ ТИСНИ — чекай.';
     } else {
       await net.confirm(code);
       if (net.peerBuild && net.peerBuild !== BUILD) say('УВАГА: різні версії файлу (' + BUILD + ' проти ' + net.peerBuild + ')', 'bad');
