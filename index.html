@@ -138,6 +138,7 @@ canvas{display:block; width:100%; height:auto; touch-action:none; cursor:crossha
 .netState.dead{color:var(--coral)} .netState.dead .dot{background:var(--coral)}
 .hint{font-size:11.5px; color:var(--text-faint); line-height:1.4}
 .diag{font-family:var(--mono); font-size:10.5px; color:var(--steel); border-top:1px solid var(--line-soft);
+  max-height:220px; overflow-y:auto;
   padding-top:6px; min-height:14px; white-space:pre-line}
 .diag:empty{display:none}
 
@@ -1024,7 +1025,7 @@ const ICE = { iceServers: [
    що мовчав, хоча ICE був connected. */
 const CHAN = { ordered: true, negotiated: true, id: 0 };
 
-const BUILD = '2026-08-23k';
+const BUILD = '2026-08-23m';
 
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
@@ -1041,6 +1042,7 @@ class Net {
     this.gotChannel = false; this.peerBuild = null; this.nonce = 0;
     this.hist = [];
     this.myId = Math.floor(Math.random() * 900000) + 100000;   // хто саме це вікно
+    this.evt = []; this.t0 = performance.now();
     this.peerId = null;
     this.iceErr = 0;
     this.onCmds = null; this.onHash = null; this.onRestart = null; this.onState = null;
@@ -1069,6 +1071,7 @@ class Net {
     pc.onicecandidateerror = () => { this.iceErr++; if (this.onDiag) this.onDiag(); };
     pc.oniceconnectionstatechange = () => {
       const s = pc.iceConnectionState;
+      this.note('ICE → ' + s);
       if (s === 'failed' || s === 'disconnected') this.setState('dead');
       if (this.onDiag) this.onDiag();
     };
@@ -1095,7 +1098,16 @@ class Net {
   get live() { return this.state === 'live'; }
   get solo() { return this.state === 'off'; }
 
+  /* Журнал подій мережі. Стан показує лише зріз «зараз», а тут видно
+     порядок: що відкрилось, що надіслано, що прийшло. */
+  note(s) {
+    const t = ((performance.now() - this.t0) / 1000).toFixed(1);
+    this.evt.push(t + 's ' + s);
+    if (this.evt.length > 22) this.evt.shift();
+    if (this.onDiag) this.onDiag();
+  }
   setState(s) {
+    this.note('стан → ' + s);
     this.state = s;
     this.hist.push(s);
     if (this.hist.length > 8) this.hist.shift();
@@ -1104,6 +1116,7 @@ class Net {
 
   wire(dc) {
     this.dc = dc; this.gotChannel = true;
+    this.note('канал отримано, стан ' + dc.readyState);
     /* Канал може бути вже відкритим до того, як ми повісимо обробник,
        тож перевіряємо стан напряму, а не покладаємось лише на подію. */
     /* Відкритий канал ще не означає, що на тому кінці хтось є: він може
@@ -1111,6 +1124,7 @@ class Net {
        вважаємо з'єднання лише коли привітання прийшло у відповідь. */
     const opened = () => {
       if (this.state === 'live') return;
+      this.note('канал ВІДКРИВСЯ, шлю привітання');
       this.send({ t:'hi', b: BUILD, w: this.myId });
       if (this.hiTimer) clearTimeout(this.hiTimer);
       this.hiTimer = setTimeout(() => {
@@ -1122,9 +1136,10 @@ class Net {
     dc.onclose = () => this.setState('dead');
     dc.onerror = () => this.setState('dead');
     dc.onmessage = ev => {
-      if (this.dc !== dc) return;        // повідомлення зі старого каналу
+      if (this.dc !== dc) { this.note('відкинуто пакет зі старого каналу'); return; }
       this.rxAny++;
-      let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      let m; try { m = JSON.parse(ev.data); } catch (e) { this.note('прийшло нечитабельне'); return; }
+      if (m.t !== 'ping' && m.t !== 'pong' && m.t !== 'c') this.note('прийшло: ' + m.t);
       if (m.t === 'c') { this.rxCmd++; if (this.onCmds) this.onCmds(m.g, m.k, m.m); }
       else if (m.t === 'h' && this.onHash) this.onHash(m.g, m.k, m.h);
       else if (m.t === 'r' && this.onRestart) this.onRestart(m.g, m.s);
@@ -1166,6 +1181,7 @@ class Net {
     this.nonce = Math.floor(Math.random() * 1e9);
     this.pc = new RTC(ICE);
     this.watch(this.pc);
+    this.pc.onconnectionstatechange = () => this.note("зв'язок → " + this.pc.connectionState);
     this.wire(this.pc.createDataChannel('lockstep', CHAN));
     await this.pc.setLocalDescription(await this.pc.createOffer());
     await iceDone(this.pc, 9000);
@@ -1179,6 +1195,7 @@ class Net {
     this.me = 1;
     this.pc = new RTC(ICE);
     this.watch(this.pc);
+    this.pc.onconnectionstatechange = () => this.note("зв'язок → " + this.pc.connectionState);
     this.wire(this.pc.createDataChannel('lockstep', CHAN));
     await this.pc.setRemoteDescription(m.sdp);
     await this.pc.setLocalDescription(await this.pc.createAnswer());
@@ -1505,7 +1522,8 @@ function lsDiag() {
          (stalled ? ' · ЧЕКАЮ' : '');
 }
 net.onDiag = () => {
-  el.coopDiag.textContent = net.diag() + String.fromCharCode(10) + lsDiag();
+  el.coopDiag.textContent = net.diag() + String.fromCharCode(10) + lsDiag() +
+    (net.evt && net.evt.length ? String.fromCharCode(10) + net.evt.join(String.fromCharCode(10)) : '');
   // Якщо зовнішніх адрес не знайшлося взагалі — попереджаємо одразу
   if (net.state === 'waiting' && net.cand.srflx === 0 && net.cand.relay === 0 && net.iceErr > 0)
     el.coopHint.textContent = 'STUN/TURN не відповідають — назовні вас не видно. ' +
@@ -1539,7 +1557,8 @@ net.onState   = s => {
     el.coopHint.textContent = net.cand.relay === 0
       ? 'Не вдалось з’єднатись. Прямого маршруту немає, ретранслятор теж не дав адрес.'
       : 'Канал розірвано.';
-    el.coopDiag.textContent = net.diag() + String.fromCharCode(10) + lsDiag();
+    el.coopDiag.textContent = net.diag() + String.fromCharCode(10) + lsDiag() +
+    (net.evt && net.evt.length ? String.fromCharCode(10) + net.evt.join(String.fromCharCode(10)) : '');
     say('Кооп: з’єднання не встановлено', 'bad');
   }
 };
