@@ -1019,6 +1019,13 @@ const ICE = { iceServers: [
 /* WebRTC є не скрізь: у пісочниці опублікованої сторінки його вимикають.
    Ловимо це один раз тут, щоб замість «not a constructor» показати людям
    зрозуміле пояснення. */
+/* Канал створюють ОБИДВІ сторони з тим самим номером (negotiated). Так
+   не потрібна подія ondatachannel — саме її гість і не отримував, через
+   що мовчав, хоча ICE був connected. */
+const CHAN = { ordered: true, negotiated: true, id: 0 };
+
+const BUILD = '2026-08-23c';
+
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
           : null;
@@ -1031,6 +1038,7 @@ class Net {
     this.rtt = 0;
     this.cand = { host:0, srflx:0, relay:0 };
     this.txCmd = 0; this.rxCmd = 0;
+    this.gotChannel = false; this.peerBuild = null;
     this.iceErr = 0;
     this.onCmds = null; this.onHash = null; this.onRestart = null; this.onState = null;
     this.onDiag = null;
@@ -1038,11 +1046,16 @@ class Net {
   diag() {
     if (!this.pc) return 'з’єднання не почато';
     const c = this.cand;
-    return 'адрес: локальних ' + c.host + ', зовнішніх ' + c.srflx + ', через ретранслятор ' + c.relay +
+    const dc = this.dc ? this.dc.readyState : (this.gotChannel ? '?' : 'НЕ ОТРИМАНО');
+    return 'адрес: локальних ' + c.host + ', зовнішніх ' + c.srflx + ', ретранслятор ' + c.relay +
            (this.iceErr ? ' · помилок STUN/TURN: ' + this.iceErr : '') +
-           ' · канал: ' + this.pc.iceConnectionState;
+           ' · ICE: ' + this.pc.iceConnectionState +
+           ' · транспорт: ' + (this.pc.sctp ? this.pc.sctp.state : 'нема') +
+           ' · зв’язок: ' + this.pc.connectionState +
+           ' · канал даних: ' + dc +
+           ' · стан: ' + this.state +
+           (this.peerBuild ? ' · збірка напарника: ' + this.peerBuild : '');
   }
-  /* Спільна обв'язка для обох сторін: рахуємо адреси й показуємо стан. */
   watch(pc) {
     pc.onicecandidate = e => {
       const k = candKind(e.candidate);
@@ -1056,17 +1069,22 @@ class Net {
       if (this.onDiag) this.onDiag();
     };
   }
+  reset() {
+    if (this.pc) { try { this.pc.close(); } catch (e) {} }
+    this.pc = null; this.dc = null; this.gotChannel = false;
+    this.cand = { host:0, srflx:0, relay:0 }; this.iceErr = 0;
+    this.txCmd = 0; this.rxCmd = 0; this.rtt = 0;
+    this.state = off;
+  }
   get live() { return this.state === 'live'; }
   get solo() { return this.state === 'off'; }
 
   setState(s) { this.state = s; if (this.onState) this.onState(s); }
 
   wire(dc) {
-    this.dc = dc;
-    /* Гостю канал приходить через ondatachannel, і на цей момент він уже
-       може бути відкритим — тоді подія open минула й обробник не спрацює
-       ніколи. Через це гість лишався в стані «чекаю» і мовчав, а господар
-       чекав його команд без кінця. Тому перевіряємо стан напряму. */
+    this.dc = dc; this.gotChannel = true;
+    /* Канал може бути вже відкритим до того, як ми повісимо обробник,
+       тож перевіряємо стан напряму, а не покладаємось лише на подію. */
     const opened = () => { if (this.state !== 'live') { this.setState('live'); this.ping(); } };
     dc.onopen = opened;
     if (dc.readyState === 'open') opened();
@@ -1096,28 +1114,31 @@ class Net {
     this.me = 0;
     this.pc = new RTC(ICE);
     this.watch(this.pc);
-    this.wire(this.pc.createDataChannel('lockstep', { ordered: true }));
+    this.wire(this.pc.createDataChannel('lockstep', CHAN));
     await this.pc.setLocalDescription(await this.pc.createOffer());
     await iceDone(this.pc, 9000);
     if (this.state !== 'live') this.setState('waiting');
-    return packCode({ r:'o', sdp: this.pc.localDescription, s: setup });
+    return packCode({ r:'o', sdp: this.pc.localDescription, s: setup, b: BUILD });
   }
   async join(code) {
     const m = await unpackCode(code);
     if (m.r !== 'o') throw new Error('це не код запрошення');
+    this.reset();                       // друга спроба не має тягнути старе з'єднання
     this.me = 1;
     this.pc = new RTC(ICE);
     this.watch(this.pc);
-    this.pc.ondatachannel = e => this.wire(e.channel);
+    this.wire(this.pc.createDataChannel('lockstep', CHAN));
     await this.pc.setRemoteDescription(m.sdp);
     await this.pc.setLocalDescription(await this.pc.createAnswer());
     await iceDone(this.pc, 9000);
     if (this.state !== 'live') this.setState('waiting');
-    return { code: await packCode({ r:'a', sdp: this.pc.localDescription }), s: m.s };
+    this.peerBuild = m.b || '?';
+    return { code: await packCode({ r:'a', sdp: this.pc.localDescription, b: BUILD }), s: m.s, b: this.peerBuild };
   }
   async confirm(code) {
     const m = await unpackCode(code);
     if (m.r !== 'a') throw new Error('це не код відповіді');
+    this.peerBuild = m.b || '?';
     await this.pc.setRemoteDescription(m.sdp);
   }
 }
@@ -1368,6 +1389,7 @@ function lockSetup(locked) {
 }
 function restart() {
   if (net.live && net.me !== 0) { say('Новий забіг починає господар', 'bad'); return; }
+  if (!net.solo && net.onDiag) net.onDiag();
   if (net.live) {
     net.send({ t:'r', g: gen + 1, s: readSetup() });
     boot(gen + 1);
@@ -1474,7 +1496,7 @@ function coopBlocked() {
 
 el.host.onclick = async () => {
   if (coopBlocked()) return;
-  if (net.state !== 'off') { say('З’єднання вже почато', 'bad'); return; }
+  net.reset();                        // нова гра — нове з’єднання, без решток старого
   el.coopHint.textContent = 'Готую код…';
   try {
     el.code.value = await net.host(readSetup());
@@ -1487,19 +1509,27 @@ el.use.onclick = async () => {
   if (coopBlocked()) return;
   const code = el.code.value.trim();
   if (!code) { el.coopHint.textContent = 'Спершу встав код.'; return; }
+  let m = null;
+  try { m = await unpackCode(code); } catch (e) { m = null; }
+  if (!m || (m.r !== 'o' && m.r !== 'a')) {
+    el.coopHint.textContent = 'Код не читається — скопійовано не повністю?';
+    return;
+  }
   try {
-    if (net.state === 'off') {                       // гість приймає запрошення
+    /* Дію обирає САМ КОД, а не внутрішній стан. Раніше після невдалої
+       спроби гість не міг приєднатись заново без перезавантаження. */
+    if (m.r === 'o') {
       const r = await net.join(code);
-      writeSetup(r.s);                                 // мапа, режим, сід і складність — від господаря
+      writeSetup(r.s);
+      if (r.b && r.b !== BUILD) say('УВАГА: різні версії файлу (' + BUILD + ' проти ' + r.b + ')', 'bad');
       el.code.value = r.code; el.code.select();
-      el.coopHint.textContent = 'Надішли цю відповідь господарю.';
-    } else if (net.me === 0 && net.state === 'waiting') {   // господар приймає відповідь
-      await net.confirm(code);
-      el.coopHint.textContent = 'Відповідь прийнято, з’єднуємось…';
+      el.coopHint.textContent = 'Надішли цю відповідь господарю. Він має вставити її одразу.';
     } else {
-      el.coopHint.textContent = 'Зараз нічого застосовувати.';
+      await net.confirm(code);
+      if (net.peerBuild && net.peerBuild !== BUILD) say('УВАГА: різні версії файлу (' + BUILD + ' проти ' + net.peerBuild + ')', 'bad');
+      el.coopHint.textContent = 'Відповідь прийнято, з’єднуємось…';
     }
-  } catch (e) { el.coopHint.textContent = 'Код не підійшов: ' + e.message; }
+  } catch (e) { el.coopHint.textContent = 'Не вийшло: ' + e.message; }
 };
 
 el.copy.onclick = () => {
@@ -1607,8 +1637,8 @@ function hud() {
     : sim.phase === 0 ? 'Хвиля ' + (sim.wave + 1) + ' за ' + Math.ceil(sim.prep / TPS) + ' с'
     : 'Хвиля ' + sim.wave + ' іде';
   el.wave_.disabled = sim.phase !== 0 || stalled;
+  if (!net.solo && net.onDiag) net.onDiag();   // діагностика жива й до з'єднання
   if (net.live) {
-    if (net.onDiag) net.onDiag();
     el.netState.innerHTML = '<span class="dot"></span>Гравець ' + (net.me + 1) +
       (net.rtt ? ' · ' + net.rtt + ' мс' : '');
   }
@@ -1856,6 +1886,7 @@ function drawCreep(c, alpha) {
 resize();
 boot();
 coopBlocked();     // одразу показати стан кооперативу, не чекаючи кліку
+el.coopDiag.textContent = 'версія файлу: ' + BUILD + ' — у обох має бути однакова';
 window.CHOKEPOINT = {
   get sim() { return sim; }, get ls() { return ls; }, get net() { return net; },
   Sim, Lockstep, Net,
