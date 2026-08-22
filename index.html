@@ -1024,7 +1024,7 @@ const ICE = { iceServers: [
    що мовчав, хоча ICE був connected. */
 const CHAN = { ordered: true, negotiated: true, id: 0 };
 
-const BUILD = '2026-08-23i';
+const BUILD = '2026-08-23j';
 
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
@@ -1040,6 +1040,8 @@ class Net {
     this.txCmd = 0; this.rxCmd = 0; this.rxAny = 0;
     this.gotChannel = false; this.peerBuild = null; this.nonce = 0;
     this.hist = [];
+    this.myId = Math.floor(Math.random() * 900000) + 100000;   // хто саме це вікно
+    this.peerId = null;
     this.iceErr = 0;
     this.onCmds = null; this.onHash = null; this.onRestart = null; this.onState = null;
     this.onDiag = null;
@@ -1048,7 +1050,8 @@ class Net {
     if (!this.pc) return 'з’єднання не почато';
     const c = this.cand;
     const dc = this.dc ? this.dc.readyState : (this.gotChannel ? '?' : 'НЕ ОТРИМАНО');
-    return 'адрес: локальних ' + c.host + ', зовнішніх ' + c.srflx + ', ретранслятор ' + c.relay +
+    return 'вікно №' + this.myId + (this.peerId ? ', з’єднано з №' + this.peerId : ', ні з ким') +
+           ' · адрес: локальних ' + c.host + ', зовнішніх ' + c.srflx + ', ретранслятор ' + c.relay +
            (this.iceErr ? ' · помилок STUN/TURN: ' + this.iceErr : '') +
            ' · ICE: ' + this.pc.iceConnectionState +
            ' · транспорт: ' + (this.pc.sctp ? this.pc.sctp.state : 'нема') +
@@ -1108,7 +1111,7 @@ class Net {
        вважаємо з'єднання лише коли привітання прийшло у відповідь. */
     const opened = () => {
       if (this.state === 'live') return;
-      this.send({ t:'hi', b: BUILD });
+      this.send({ t:'hi', b: BUILD, w: this.myId });
       if (this.hiTimer) clearTimeout(this.hiTimer);
       this.hiTimer = setTimeout(() => {
         if (this.state !== 'live') this.setState('stale');
@@ -1126,11 +1129,14 @@ class Net {
       else if (m.t === 'h' && this.onHash) this.onHash(m.g, m.k, m.h);
       else if (m.t === 'r' && this.onRestart) this.onRestart(m.g, m.s);
       else if (m.t === 'hi') {
-        this.peerBuild = m.b || '?';
-        this.send({ t:'hi2', b: BUILD });
+        this.peerBuild = m.b || '?'; this.peerId = m.w || null;
+        this.send({ t:'hi2', b: BUILD, w: this.myId });
         this.goLive();
       }
-      else if (m.t === 'hi2') { this.peerBuild = m.b || '?'; this.goLive(); }
+      else if (m.t === 'hi2') {
+        this.peerBuild = m.b || '?'; this.peerId = m.w || null;
+        this.goLive();
+      }
       else if (m.t === 'ping') this.send({ t:'pong', at:m.at });
       else if (m.t === 'pong') this.rtt = Math.round(performance.now() - m.at);
     };
@@ -1942,7 +1948,7 @@ function drawCreep(c, alpha) {
 resize();
 boot();
 coopBlocked();     // одразу показати стан кооперативу, не чекаючи кліку
-el.coopDiag.textContent = 'версія файлу: ' + BUILD + ' — у обох має бути однакова';
+el.coopDiag.textContent = 'вікно №' + net.myId + ' · версія ' + BUILD + ' — у обох має бути однакова';
 window.CHOKEPOINT = {
   get sim() { return sim; }, get ls() { return ls; }, get net() { return net; },
   Sim, Lockstep, Net, BUILD,
