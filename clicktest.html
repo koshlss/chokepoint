@@ -1,0 +1,55 @@
+<!doctype html><meta charset="utf-8"><title>clicktest</title>
+<body style="background:#0B1116;color:#C8D6DE;font:13px/1.6 ui-monospace,Consolas,monospace;padding:16px">
+<pre id="out">…</pre>
+<iframe id="f" src="index.html" style="width:900px;height:500px;border:1px solid #333"></iframe>
+<script>
+/* Тисне на кнопки гри всередині iframe і ловить помилки. Саме цього
+   бракувало: завантаження сторінки не перевіряє обробники кліків. */
+const log = [], out = () => document.getElementById('out').textContent = log.join('\n');
+let bad = 0;
+const say = s => { log.push(s); out(); };
+const check = (n, ok, extra) => { say((ok ? '  ok   ' : '  ЗБІЙ ') + n + (extra ? '  — ' + extra : '')); if (!ok) bad++; };
+
+window.addEventListener('load', async () => {
+  const f = document.getElementById('f');
+  const w = f.contentWindow, d = f.contentDocument;
+  if (!d) { say('немає доступу до iframe (потрібен --allow-file-access-from-files)'); return; }
+
+  const errs = [];
+  w.addEventListener('error', e => errs.push(e.message));
+  w.addEventListener('unhandledrejection', e => errs.push('promise: ' + (e.reason && e.reason.message || e.reason)));
+
+  await new Promise(r => setTimeout(r, 400));
+  say('версія: ' + (w.CHOKEPOINT && w.CHOKEPOINT.BUILD));
+  check('гра стартувала', w.CHOKEPOINT && w.CHOKEPOINT.sim && w.CHOKEPOINT.sim.tick >= 0);
+
+  // 1. кожен інструмент арсеналу
+  const tools = d.querySelectorAll('.tool');
+  check('арсенал побудовано', tools.length >= 9, tools.length + ' кнопок');
+  tools.forEach(t => t.click());
+
+  // 2. керування
+  for (const id of ['btnPause','btnSpeed','btnWave','btnVerify','restart']) {
+    const b = d.getElementById(id);
+    if (b) b.click(); else check('є кнопка ' + id, false);
+  }
+  await new Promise(r => setTimeout(r, 200));
+  check('після керування помилок немає', errs.length === 0, errs.join(' | '));
+
+  // 3. головне — створення гри
+  d.getElementById('btnHost').click();
+  await new Promise(r => setTimeout(r, 2500));
+  const code = d.getElementById('codeBox').value;
+  check('«Створити гру» без помилок', errs.length === 0, errs.join(' | '));
+  say('  довідково: код запрошення ' + code.length + ' символів (під віртуальним часом ICE не встигає)');
+
+  // 4. вставлення сміття не має валити сторінку
+  d.getElementById('codeBox').value = 'не-код';
+  d.getElementById('btnUse').click();
+  await new Promise(r => setTimeout(r, 300));
+  check('сміття в полі коду оброблено чемно', errs.length === 0, errs.join(' | '));
+
+  say('');
+  say(bad ? '══ ЗБОЇВ: ' + bad + ' ══' : '══ УСЕ ЧИСТО ══');
+});
+</script>

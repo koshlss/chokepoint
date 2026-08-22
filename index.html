@@ -1024,7 +1024,7 @@ const ICE = { iceServers: [
    що мовчав, хоча ICE був connected. */
 const CHAN = { ordered: true, negotiated: true, id: 0 };
 
-const BUILD = '2026-08-23c';
+const BUILD = '2026-08-23d';
 
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
@@ -1074,7 +1074,7 @@ class Net {
     this.pc = null; this.dc = null; this.gotChannel = false;
     this.cand = { host:0, srflx:0, relay:0 }; this.iceErr = 0;
     this.txCmd = 0; this.rxCmd = 0; this.rtt = 0;
-    this.state = off;
+    this.state = 'off';
   }
   get live() { return this.state === 'live'; }
   get solo() { return this.state === 'off'; }
@@ -1889,6 +1889,6 @@ coopBlocked();     // одразу показати стан кооперати�
 el.coopDiag.textContent = 'версія файлу: ' + BUILD + ' — у обох має бути однакова';
 window.CHOKEPOINT = {
   get sim() { return sim; }, get ls() { return ls; }, get net() { return net; },
-  Sim, Lockstep, Net,
+  Sim, Lockstep, Net, BUILD,
 };
 </script>
