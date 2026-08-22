@@ -1,0 +1,1733 @@
+<title>Chokepoint</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+/* ─── Chokepoint · токени ────────────────────────────────────────────────
+   Свідомо однотемна річ: це ігровий прилад, темний планшет-планувальник.
+   Кожен колір заданий явно, тому сторінка тримається на будь-якому фоні. */
+:root{
+  --ink:        #0B1116;
+  --ink-2:      #101A20;
+  --panel:      #131E25;
+  --panel-hi:   #1A2831;
+  --line:       #22323C;
+  --line-soft:  #1A2830;
+  --text:       #C8D6DE;
+  --text-dim:   #7E929D;
+  --text-faint: #55686F;
+  --brass:      #E9A93C;
+  --brass-dim:  #8A6423;
+  --coral:      #E0574A;
+  --steel:      #57A0BE;
+  --moss:       #6FB07A;
+  --violet:     #8E7BC0;
+
+  --t-wall:   #55707E;
+  --t-arrow:  #E9A93C;
+  --t-mortar: #C9732F;
+  --t-frost:  #57A0BE;
+  --t-venom:  #7FA53F;
+  --t-rail:   #8E7BC0;
+
+  --display: "Bahnschrift","DIN Alternate","Roboto Condensed","Arial Narrow",system-ui,sans-serif;
+  --mono: ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;
+  --body: system-ui,-apple-system,"Segoe UI",sans-serif;
+
+  --r: 3px;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--ink); color:var(--text);
+  font-family:var(--body); font-size:14px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1240px; margin:0 auto; padding:18px 18px 40px; display:flex; flex-direction:column; gap:14px; min-height:100vh}
+
+/* ─── шапка ─── */
+.masthead{display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  border-bottom:1px solid var(--line); padding-bottom:12px}
+.brand{display:flex; align-items:baseline; gap:12px}
+.brand h1{font-family:var(--display); font-weight:600; font-size:30px; letter-spacing:.06em;
+  text-transform:uppercase; margin:0; color:var(--text)}
+.brand h1 span{color:var(--brass)}
+.brand .sub{font-family:var(--display); font-size:13px; letter-spacing:.16em; text-transform:uppercase; color:var(--text-faint)}
+.seedbar{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.mapNote{font-family:var(--display); font-size:12px; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--steel); margin-top:-6px}
+
+/* ─── загальні контроли ─── */
+label.field{display:flex; align-items:center; gap:6px; font-family:var(--display);
+  font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--text-dim)}
+input[type=text], select{
+  background:var(--ink-2); color:var(--text); border:1px solid var(--line);
+  border-radius:var(--r); padding:5px 7px; font-family:var(--mono); font-size:12px;
+}
+input[type=text]{width:96px}
+button{
+  background:var(--panel); color:var(--text); border:1px solid var(--line);
+  border-radius:var(--r); padding:6px 11px; cursor:pointer;
+  font-family:var(--display); font-size:12px; letter-spacing:.1em; text-transform:uppercase;
+  transition:background .12s, border-color .12s, color .12s;
+}
+button:hover{background:var(--panel-hi); border-color:#2E434F}
+button:focus-visible, input:focus-visible, select:focus-visible{outline:2px solid var(--brass); outline-offset:1px}
+button.primary{border-color:var(--brass-dim); color:var(--brass)}
+button.primary:hover{background:#20180B; border-color:var(--brass)}
+button:disabled{opacity:.4; cursor:default}
+button:disabled:hover{background:var(--panel); border-color:var(--line)}
+
+/* ─── стрічка стану ─── */
+.readout{display:grid; grid-template-columns:repeat(auto-fit,minmax(104px,1fr)); gap:1px;
+  background:var(--line-soft); border:1px solid var(--line); border-radius:var(--r); overflow:hidden}
+.stat{background:var(--panel); padding:8px 12px; display:flex; flex-direction:column; gap:2px}
+.stat .k{font-family:var(--display); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--text-faint)}
+.stat .v{font-family:var(--mono); font-size:19px; font-variant-numeric:tabular-nums; color:var(--text)}
+.stat .v.warn{color:var(--coral)}
+.stat .v.gold{color:var(--brass)}
+.stat .v.calm{color:var(--steel)}
+.stat .v small{font-size:12px; color:var(--text-faint)}
+
+/* ─── головна сітка ─── */
+.main{display:grid; grid-template-columns:236px minmax(0,1fr); gap:14px; align-items:start}
+@media (max-width:860px){ .main{grid-template-columns:1fr} }
+
+/* ─── арсенал ─── */
+.rail{display:flex; flex-direction:column; gap:6px}
+.rail h2, .aside h2{font-family:var(--display); font-size:10px; letter-spacing:.2em;
+  text-transform:uppercase; color:var(--text-faint); margin:0 0 2px; font-weight:600}
+.tool{
+  display:grid; grid-template-columns:auto 1fr auto; gap:9px; align-items:center;
+  background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--swatch,var(--line));
+  border-radius:var(--r); padding:7px 9px; cursor:pointer; text-align:left; width:100%;
+  font-family:var(--body); text-transform:none; letter-spacing:0; font-size:13px;
+}
+.tool:hover{background:var(--panel-hi)}
+.tool[aria-pressed=true]{background:#1B2A33; border-color:#33505E; box-shadow:inset 0 0 0 1px #24404C}
+.tool .key{font-family:var(--mono); font-size:10px; color:var(--text-faint);
+  border:1px solid var(--line); border-radius:2px; padding:1px 4px; min-width:17px; text-align:center}
+.tool .nm{display:flex; flex-direction:column; gap:1px; min-width:0}
+.tool .nm b{font-family:var(--display); font-weight:600; font-size:14px; letter-spacing:.03em; color:var(--text)}
+.tool .nm i{font-style:normal; font-size:11px; color:var(--text-faint); line-height:1.3}
+.tool .nm u{text-decoration:none; font-family:var(--mono); font-size:10px; color:var(--steel);
+  font-variant-numeric:tabular-nums; margin-top:1px}
+.tool .cost{font-family:var(--mono); font-size:12px; font-variant-numeric:tabular-nums; color:var(--brass)}
+.tool.poor .cost{color:var(--text-faint)}
+.tool.raze{--swatch:var(--coral)}
+
+/* ─── дошка ─── */
+.board{border:1px solid var(--line); border-radius:var(--r); background:var(--ink-2); overflow:hidden; position:relative}
+canvas{display:block; width:100%; height:auto; touch-action:none; cursor:crosshair}
+.boardbar{display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:8px 10px;
+  border-top:1px solid var(--line); background:var(--panel)}
+.boardbar .spacer{flex:1}
+.toggle{display:flex; align-items:center; gap:5px; font-family:var(--display); font-size:11px;
+  letter-spacing:.1em; text-transform:uppercase; color:var(--text-dim); cursor:pointer}
+
+/* ─── кооператив ─── */
+.coop{background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  padding:9px; display:flex; flex-direction:column; gap:7px}
+.coopRow{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
+.coop textarea{width:100%; height:56px; resize:vertical; background:var(--ink-2); color:var(--text-dim);
+  border:1px solid var(--line); border-radius:var(--r); padding:6px 7px;
+  font-family:var(--mono); font-size:10.5px; line-height:1.35; word-break:break-all}
+.coop textarea:focus-visible{outline:2px solid var(--brass); outline-offset:1px}
+.netState{font-family:var(--display); font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--text-faint); margin-left:auto; display:flex; align-items:center; gap:6px}
+.netState .dot{width:7px; height:7px; border-radius:50%; background:var(--text-faint)}
+.netState.live{color:var(--moss)} .netState.live .dot{background:var(--moss)}
+.netState.waiting{color:var(--brass)} .netState.waiting .dot{background:var(--brass)}
+.netState.dead{color:var(--coral)} .netState.dead .dot{background:var(--coral)}
+.hint{font-size:11.5px; color:var(--text-faint); line-height:1.4}
+
+/* ─── журнал ─── */
+.aside{display:flex; flex-direction:column; gap:6px; margin-top:10px}
+.log{background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  font-family:var(--mono); font-size:12px; padding:8px 10px; display:flex; flex-direction:column-reverse;
+  gap:3px; max-height:118px; overflow-y:auto}
+.log div{color:var(--text-dim)}
+.log div.bad{color:var(--coral)}
+.log div.good{color:var(--moss)}
+.log div.note{color:var(--steel)}
+.log div .t{color:var(--text-faint)}
+
+/* ─── підвал ─── */
+.notes{border-top:1px solid var(--line); padding-top:14px; display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:18px; color:var(--text-dim); font-size:12.5px}
+.notes h3{font-family:var(--display); font-size:10px; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--text-faint); margin:0 0 6px; font-weight:600}
+.notes p{margin:0 0 6px}
+.notes code{font-family:var(--mono); font-size:11.5px; color:var(--steel)}
+.notes kbd{font-family:var(--mono); font-size:11px; border:1px solid var(--line);
+  border-radius:2px; padding:0 4px; color:var(--text)}
+
+/* ─── оверлей ─── */
+.veil{position:absolute; inset:0; background:rgba(11,17,22,.86); display:flex;
+  align-items:center; justify-content:center; flex-direction:column; gap:12px; text-align:center; padding:20px}
+.veil[hidden]{display:none}
+.veil h2{font-family:var(--display); font-size:32px; letter-spacing:.1em; text-transform:uppercase; margin:0}
+.veil p{margin:0; color:var(--text-dim); font-family:var(--mono); font-size:13px}
+.veil.lost h2{color:var(--coral)}
+.veil.verify h2{color:var(--steel); font-size:22px}
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brand">
+      <h1>Choke<span>point</span></h1>
+      <div class="sub">детермінований мейзинг-TD</div>
+    </div>
+    <div class="seedbar">
+      <label class="field">Сід <input type="text" id="seed" value="MAZE-01" spellcheck="false"></label>
+      <label class="field">Мапа <select id="mapSel"></select></label>
+      <label class="field">Режим
+        <select id="modeSel">
+          <option value="0" selected>Лабіринт</option>
+          <option value="1">Фіксований шлях</option>
+        </select>
+      </label>
+      <label class="field">Складність
+        <select id="diff">
+          <option value="70">Легко</option>
+          <option value="100" selected>Норма</option>
+          <option value="145">Важко</option>
+        </select>
+      </label>
+      <button id="restart">Новий забіг</button>
+    </div>
+  </header>
+  <div class="mapNote" id="mapNote"></div>
+
+  <div class="readout">
+    <div class="stat"><div class="k">Хвиля</div><div class="v" id="rWave">0</div></div>
+    <div class="stat"><div class="k">Життя</div><div class="v" id="rLives">20</div></div>
+    <div class="stat"><div class="k">Твоє золото</div><div class="v gold" id="rGold">0</div></div>
+    <div class="stat" id="sMate" hidden><div class="k">Напарник</div><div class="v calm" id="rMate">0</div></div>
+    <div class="stat"><div class="k">Довжина шляху</div><div class="v calm" id="rPath">0<small> кл.</small></div></div>
+    <div class="stat"><div class="k">Наступна хвиля</div><div class="v" id="rNext" style="font-size:15px">—</div></div>
+    <div class="stat"><div class="k">Тік</div><div class="v" id="rTick">0</div></div>
+    <div class="stat"><div class="k">Хеш стану</div><div class="v" id="rHash" style="font-size:15px">—</div></div>
+  </div>
+
+  <div class="main">
+    <nav class="rail" id="rail"><h2>Арсенал</h2></nav>
+
+    <div>
+      <div class="board">
+        <canvas id="cv"></canvas>
+        <div class="veil" id="veil" hidden><h2 id="veilTitle"></h2><p id="veilText"></p><button id="veilBtn" class="primary">Новий забіг</button></div>
+        <div class="boardbar">
+          <button id="btnWave" class="primary">Викликати хвилю</button>
+          <button id="btnPause">Пауза</button>
+          <button id="btnSpeed">1×</button>
+          <div class="spacer"></div>
+          <label class="toggle"><input type="checkbox" id="showPath" checked> Шлях</label>
+          <label class="toggle"><input type="checkbox" id="showRange" checked> Радіус</label>
+          <button id="btnVerify">Перевірити детермінізм</button>
+        </div>
+      </div>
+
+      <div class="aside">
+        <h2>Кооператив</h2>
+        <div class="coop">
+          <div class="coopRow">
+            <button id="btnHost">Створити гру</button>
+            <button id="btnUse">Застосувати код</button>
+            <span class="netState" id="netState"><span class="dot"></span>Соло</span>
+          </div>
+          <textarea id="codeBox" spellcheck="false" placeholder="Господар: натисни «Створити гру» і надішли код другу.&#10;Гість: встав сюди код друга і натисни «Застосувати код»."></textarea>
+          <div class="coopRow">
+            <button id="btnCopy">Копіювати код</button>
+            <span class="hint" id="coopHint">Обмін кодами — через будь-який чат.</span>
+          </div>
+        </div>
+        <h2>Журнал</h2>
+        <div class="log" id="log"></div>
+      </div>
+    </div>
+  </div>
+
+  <section class="notes">
+    <div>
+      <h3>Два режими</h3>
+      <p><b>Лабіринт.</b> Дороги немає, поле відкрите. Башти й бар'єри перекривають клітини — ти не стріляєш по коридору, ти будуєш коридор. Головна цифра — довжина шляху.</p>
+      <p><b>Фіксований шлях.</b> Дорога намальована й незмінна: на неї не можна ставити, а башти на неї не впливають. Тут вирішує не геометрія, а вибір і розміщення веж уздовж траси.</p>
+      <p>Три мапи — <b>Прохід</b>, <b>Серпантин</b>, <b>Обхід</b> — працюють в обох режимах. Скелі не забудовуються ніколи.</p>
+    </div>
+    <div>
+      <h3>Як грати</h3>
+      <p>Крипи йдуть від входу до виходу. У режимі лабіринту башти й бар'єри <em>перекривають клітини</em>.</p>
+      <p>Замурувати наглухо не можна: гра відхилить будівництво, яке лишає нуль проходів.</p>
+      <p>Щойно поставлене обведено пунктиром — таке зноситься за <b>повну ціну</b>, перебудовуй лабіринт скільки треба. Щойно мине межа хвилі, повернення падає до 70%.</p>
+    </div>
+    <div>
+      <h3>Керування</h3>
+      <p><kbd>1</kbd>–<kbd>6</kbd> вибір башти, <kbd>0</kbd> знести, <kbd>Esc</kbd> скасувати.<br>
+      <kbd>Пробіл</kbd> пауза, <kbd>F</kbd> швидкість, <kbd>N</kbd> викликати хвилю.<br>
+      ЛКМ ставить, ПКМ зносить.</p>
+    </div>
+    <div>
+      <h3>Кооператив удвох</h3>
+      <p><b>Господар</b> тисне «Створити гру», копіює код і кидає другу в чат. <b>Гість</b> вставляє код, тисне «Застосувати», отримує код-відповідь і шле назад. Господар вставляє відповідь — і гра починається.</p>
+      <p>З'єднання пряме, без сервера. Життя спільні, золото в кожного своє. Паузи й прискорення в кооперативі немає.</p>
+    </div>
+    <div>
+      <h3>Чому детермінізм</h3>
+      <p>Симуляція живе на цілих числах, окремо від малювання. Жодного <code>float</code>, жодного <code>Math.random</code>: випадковість іде з PRNG за сідом.</p>
+      <p>Тому мережею летять лише натискання — крипи й башти рахуються однаково з обох боків. Раз на дві секунди сторони звіряють <b>хеш стану</b>; розбіжність одразу зупиняє гру, а не тихо псує партію.</p>
+    </div>
+  </section>
+</div>
+
+<script>
+"use strict";
+/* ===SIM-CORE-BEGIN===  (межа для офлайн-прогону; не чіпати) */
+/* ══════════════════════════════════════════════════════════════════════
+   ЧАСТИНА 1 · СИМУЛЯЦІЯ
+   Тут немає float, Date, Math.random і жодного звертання до DOM.
+   Усе, що виходить назовні — цілі числа. Це дозволяє ганяти те саме
+   ядро на всіх клієнтах і синхронізувати лише команди.
+   ══════════════════════════════════════════════════════════════════════ */
+
+const TPS  = 30;      // тіків на секунду
+const SUB  = 256;     // під-одиниць у клітині
+const GW   = 26, GH = 18;
+
+const idx = (x, y) => y * GW + x;
+
+/* ── єдине місце для всіх ручок балансу ────────────────────────────── */
+const BALANCE = {
+  lives:      20,
+  startGold:  500,
+  prepFirst:  25,   // с до першої хвилі
+  prepAfter:  18,   // с між хвилями
+  /* Складність мапи вимірюється ПОКРИТТЯМ, а не довжиною: скільки кроків
+     траси накриває кулак з 60 найкращих місць. Кути й перехрестя дають
+     одній башті бити трасу кілька разів — саме це й вирішує. Заміряно
+     прогоном: дві мапи з покриттям ~630 тримались до 14–16 хвилі, мапа
+     з 404 — лише до 7-ї, хоча всі три однакові завдовжки. */
+  covTop:       120,   // скільки найкращих місць рахуємо — приблизно стільки веж і стоїть
+  refCoverage:  880,  // покриття «Вузла»; решта мап міряються відносно нього
+  mazeCoverage: 330,   // припущене покриття в лабіринті; підібрано прогоном
+  /* Премія за хвилю платиться завжди, навіть якщо крипи прорвались. Що
+     більша її частка, то слабша сніжна куля: невдала хвиля не обвалює
+     дохід і не тягне за собою наступні. */
+  waveBonus:  w => 90 + w * 18,
+  killCut:    72,   // % золота з вбивства від табличного
+  bountyPct:  12,   // шанс подвійного золота з вбивства
+};
+
+/* ── мапи ─────────────────────────────────────────────────────────────
+   Траса задана вейпойнтами: між сусідніми точками завжди рівний відрізок
+   по осі. Вона може ПЕРЕТИНАТИ САМУ СЕБЕ — крипи йдуть за авторським
+   порядком клітин, а не шукають найкоротше, тож на перехресті не зріжуть.
+   Клітина перехрестя коштує гравцю вдвічі дешевше: одна башта б'є трасу
+   двічі. Скелі — прямокутниками. У лабіринті траса не діє.          */
+const MAPS = [
+  { name:'Вузол', note:'вихід у центрі, траса перетинає себе',
+    road:[[0,9],[3,9],[3,4],[20,4],[20,13],[7,13],[7,8],[17,8],[17,12],[19,12],[19,9],[13,9]],
+    // Центральний вихід дає в лабіринті закрутити дуже довгий шлях, тож
+    // тут крипи міцніші. Скелі це не лікує — бот бере їх за дармові стінки.
+    mazeCov:400,
+    rocks:[[10,15,3,2],[22,6,2,3],[1,1,2,2]] },
+  { name:'Двійка', note:'вісімка з двома перехрестями',
+    road:[[0,4],[11,4],[11,13],[5,13],[5,8],[19,8],[19,4],[15,4],[15,14],[25,14]],
+    rocks:[[1,9,2,3],[21,10,3,3],[7,1,3,2]] },
+  { name:'Гребінь', note:'три щільні смуги, башта б’є дві',
+    road:[[0,3],[22,3],[22,8],[4,8],[4,13],[25,13]],
+    rocks:[[8,0,2,2],[15,15,3,2],[11,10,2,2],[17,5,2,2]] },
+];
+const MODE_MAZE = 0, MODE_FIXED = 1;
+
+/* Впорядкована послідовність клітин від входу до виходу. Клітина
+   перехрестя з'являється в ній двічі — саме так і має бути. */
+function buildRoute(map) {
+  const r = [];
+  for (let i = 0; i < map.road.length - 1; i++) {
+    let x = map.road[i][0], y = map.road[i][1];
+    const x1 = map.road[i + 1][0], y1 = map.road[i + 1][1];
+    const dx = Math.sign(x1 - x), dy = Math.sign(y1 - y);
+    if (i === 0) r.push(idx(x, y));
+    while (x !== x1 || y !== y1) { x += dx; y += dy; r.push(idx(x, y)); }
+  }
+  return r;
+}
+
+// 0 — вільно, 1 — скеля, 2 — траса
+function buildTerrain(map, route) {
+  const t = new Uint8Array(GW * GH);
+  for (const r of map.rocks)
+    for (let y = r[1]; y < r[1] + r[3]; y++)
+      for (let x = r[0]; x < r[0] + r[2]; x++)
+        if (x >= 0 && y >= 0 && x < GW && y < GH) t[idx(x, y)] = 1;
+  for (const i of route) t[i] = 2;      // траса перекриває скелі
+  return t;
+}
+
+/* ── арсенал ─────────────────────────────────────────────────────────── */
+/* Радіуси задаються В КЛІТИНАХ через tiles() — раніше вони були вписані
+   сирими під-одиницями й виходили втричі коротшими, ніж задумано. */
+const tiles = n => Math.round(n * SUB);
+
+const TOOLS = [
+  { key:'wall',   name:"Бар'єр",     cost:10,  dmg:0,   cd:0,  range:0,          shot:0,   swatch:'--t-wall',
+    blurb:'Не стріляє. Тільки довший шлях.' },
+  { key:'arrow',  name:'Стріломет',  cost:60,  dmg:15,  cd:16, range:tiles(3.3), shot:110, swatch:'--t-arrow',
+    blurb:'Дешевий, швидкий, одна ціль.' },
+  { key:'mortar', name:'Мортира',    cost:130, dmg:34,  cd:42, range:tiles(3.1), shot:70,  swatch:'--t-mortar',
+    splash:tiles(1.15), blurb:'Осколки по площі.' },
+  { key:'frost',  name:'Кріостат',   cost:95,  dmg:9,   cd:22, range:tiles(3.0), shot:95,  swatch:'--t-frost',
+    slow:45, slowT:45, blurb:'Сповільнює на 45%.' },
+  { key:'venom',  name:'Токсин',     cost:110, dmg:8,   cd:26, range:tiles(3.1), shot:95,  swatch:'--t-venom',
+    dot:11, dotT:90, blurb:'Отрута йде крізь броню.' },
+  { key:'rail',   name:'Рейкотрон',  cost:200, dmg:110, cd:74, range:tiles(6.5), shot:240, swatch:'--t-rail',
+    blurb:'Далеко й боляче, але рідко.' },
+];
+const TOOL_BY_KEY = {};
+TOOLS.forEach((t, i) => { t.slot = i; TOOL_BY_KEY[t.key] = t; });
+
+/* Прокачка. Разом за третій рівень виходить 360% ціни за 4.4× шкоди —
+   вигідніше за нові вежі по золоту, але дає менше покриття. Тобто вибір:
+   рости вгору на хорошому місці чи вшир на посередніх. */
+const UPG = [
+  null,
+  { dmg:100, range:100, pct:0   },
+  { dmg:210, range:112, pct:90  },
+  { dmg:440, range:125, pct:170 },
+];
+const MAX_LVL = 3;
+
+/* Кого бере на приціл: перший до виходу, останній, найміцніший, найслабший. */
+const AIMS = ['перший', 'останній', 'міцний', 'слабкий'];
+
+/* ── хвилі ───────────────────────────────────────────────────────────── */
+/* Здоров'я росте приблизно на третину за хвилю, золото — лінійно. Це
+   навмисно: самим докупанням башт не витягнути, треба покращувати
+   розміщення. Кожна п'ята хвиля — бос. Числа зверстані під трасу в
+   BALANCE.refRoute клітин і масштабуються під реальну довжину мапи. */
+const WAVES = [
+  { n:12, hp:90,    sp:26, gold:12,  kind:0 },
+  { n:14, hp:130,   sp:26, gold:14,  kind:0 },
+  { n:16, hp:175,   sp:30, gold:16,  kind:1 },   // перші бігуни — м'якше, ніж далі
+  { n:16, hp:250,   sp:24, gold:18,  kind:0 },
+  { n:1,  hp:2500,  sp:18, gold:160, kind:3, esc:{ n:10, hp:250,  sp:24, gold:18, kind:0 } },
+  { n:18, hp:420,   sp:26, gold:22,  kind:0 },
+  { n:20, hp:560,   sp:36, gold:24,  kind:1 },
+  { n:20, hp:760,   sp:22, gold:26,  kind:2 },
+  { n:22, hp:1000,  sp:26, gold:28,  kind:0 },
+  { n:1,  hp:8400,  sp:18, gold:400, kind:3, esc:{ n:12, hp:1000, sp:26, gold:28, kind:0 } },
+  { n:22, hp:1350,  sp:28, gold:32,  kind:0 },
+  { n:24, hp:1750,  sp:36, gold:34,  kind:1 },
+  { n:24, hp:2300,  sp:22, gold:36,  kind:2 },
+  { n:24, hp:3000,  sp:28, gold:38,  kind:0 },
+  { n:1,  hp:19000, sp:18, gold:800, kind:3, esc:{ n:14, hp:3000, sp:28, gold:38, kind:0 } },
+];
+const KIND_NAME = ['піхота', 'бігуни', 'броньовані', 'титан'];
+const ARMOR = [0, 0, 3, 10];   // плоске зменшення шкоди за удар; отрута його не бачить
+
+function waveSpec(w) {                       // w — 1-базований
+  if (w <= WAVES.length) return WAVES[w - 1];
+  const over = w - WAVES.length;             // нескінченний режим, чиста формула
+  const body = { n:24, hp:((3000 * (100 + over * 30)) / 100) | 0, sp:24 + (over % 3) * 5, gold:38 + over * 3, kind:over % 3 };
+  if ((w % 5) === 0) return { n:1 + ((over / 12) | 0), hp:19000 + over * 5400, sp:18, gold:800 + over * 70, kind:3,
+                              esc:{ n:14, hp:(body.hp / 2) | 0, sp:28, gold:body.gold, kind:0 } };
+  return body;
+}
+
+/* ── дрібні цілочисельні утиліти ─────────────────────────────────────── */
+function isqrt(n) {                          // ціле квадратне коріння, без Math.sqrt
+  if (n <= 0) return 0;
+  let x = n, y = ((x + 1) / 2) | 0;
+  while (y < x) { x = y; y = ((x + ((n / x) | 0)) / 2) | 0; }
+  return x;
+}
+function seedFrom(str) {                     // рядок → 32-бітне зерно
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return h >>> 0;
+}
+
+class Sim {
+  constructor(seedStr, diff, nPlayers, mapIdx, mode) {
+    this.seedStr = seedStr;
+    this.diff    = diff | 0;
+    this.nPlayers = nPlayers || 1;
+    this.mapIdx  = mapIdx | 0;
+    this.mode    = mode | 0;
+    this.map     = MAPS[this.mapIdx] || MAPS[0];
+    this.route   = buildRoute(this.map);
+    this.terrain = buildTerrain(this.map, this.route);
+    const s = this.route[0], g = this.route[this.route.length - 1];
+    this.sx = s % GW; this.sy = (s / GW) | 0;
+    this.gx = g % GW; this.gy = (g / GW) | 0;
+    this.rng     = seedFrom(seedStr);
+    this.tick    = 0;
+    this.lives   = BALANCE.lives;
+    this.over    = false;
+    this.won     = false;
+    this.frozen  = false;   // пауза живе всередині симуляції, тому будувати можна
+
+    this.players = [];
+    for (let i = 0; i < this.nPlayers; i++) this.players.push({ id:i, gold:BALANCE.startGold });
+
+    this.blocked = new Uint8Array(GW * GH);
+    this.flow    = new Int32Array(GW * GH);
+    this.towers  = [];
+    this.creeps  = [];
+    this.shots   = [];
+    this.events  = [];       // споживається рендером, чиститься щотіка
+
+    this.nextCreepId = 1;
+    this.wave        = 0;
+    this.phase       = 0;    // 0 = підготовка, 1 = хвиля йде
+    this.prep        = TPS * BALANCE.prepFirst;
+    this.queue       = [];
+    this.toSpawn     = 0;
+    this.spawnGap    = 0;
+    this.spawnCd     = 0;
+    this.spec        = null;
+
+    this.recomputeFlow();
+    this.cov = this.mode === MODE_FIXED
+      ? this.coverageIndex()
+      : (this.map.mazeCov || BALANCE.mazeCoverage);
+  }
+
+  /* Скільки кроків траси накриває кулак з 60 найкращих місць. Крок, а не
+     клітина: перехрестя проходять двічі, тож і рахується двічі. */
+  coverageIndex() {
+    const R = TOOL_BY_KEY.mortar.range, R2 = R * R;
+    const scores = [];
+    for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+      if (!this.buildable(x, y)) continue;
+      const cx = x * SUB + (SUB >> 1), cy = y * SUB + (SUB >> 1);
+      let s = 0;
+      for (let k = 0; k < this.route.length; k++) {
+        const p = this.route[k];
+        const dx = (p % GW) * SUB + (SUB >> 1) - cx;
+        const dy = ((p / GW) | 0) * SUB + (SUB >> 1) - cy;
+        if (dx * dx + dy * dy <= R2) s++;
+      }
+      if (s > 0) scores.push(s);
+    }
+    scores.sort((a, b) => b - a);
+    let sum = 0;
+    for (let i = 0; i < BALANCE.covTop && i < scores.length; i++) sum += scores[i];
+    return sum || 1;
+  }
+
+  /* ── PRNG: mulberry32 на цілих ── */
+  rand() {
+    this.rng = (this.rng + 0x6D2B79F5) | 0;
+    let t = this.rng;
+    t = Math.imul(t ^ (t >>> 15), 1 | t);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return (t ^ (t >>> 14)) >>> 0;
+  }
+  randMod(m) { return this.rand() % m; }
+
+  /* У режимі фіксованого шляху прохідна лише дорога, і башти на неї не
+     впливають узагалі — саме тому маршрут неможливо змінити. */
+  passable(i) {
+    if (this.mode === MODE_FIXED) return this.terrain[i] === 2;
+    return this.terrain[i] !== 1 && !this.blocked[i];
+  }
+
+  /* ── потокове поле: BFS від виходу ── */
+  recomputeFlow(into) {
+    const f = into || this.flow;
+    f.fill(-1);
+    const q = new Int32Array(GW * GH);
+    let head = 0, tail = 0;
+    const g = idx(this.gx, this.gy);
+    f[g] = 0; q[tail++] = g;
+    while (head < tail) {
+      const i = q[head++], d = f[i];
+      const x = i % GW, y = (i / GW) | 0;
+      if (x + 1 < GW) { const n = i + 1;  if (f[n] === -1 && this.passable(n)) { f[n] = d + 1; q[tail++] = n; } }
+      if (x - 1 >= 0) { const n = i - 1;  if (f[n] === -1 && this.passable(n)) { f[n] = d + 1; q[tail++] = n; } }
+      if (y + 1 < GH) { const n = i + GW; if (f[n] === -1 && this.passable(n)) { f[n] = d + 1; q[tail++] = n; } }
+      if (y - 1 >= 0) { const n = i - GW; if (f[n] === -1 && this.passable(n)) { f[n] = d + 1; q[tail++] = n; } }
+    }
+    return f;
+  }
+
+  /* Наступна клітина зі сталим порядком обходу — це і робить шлях
+     однаковим на всіх машинах. */
+  stepTile(x, y, f) {
+    const here = f[idx(x, y)];
+    if (here <= 0) return -1;
+    let best = -1, bestD = here;
+    if (x + 1 < GW) { const n = idx(x + 1, y); if (f[n] >= 0 && f[n] < bestD) { bestD = f[n]; best = n; } }
+    if (y + 1 < GH) { const n = idx(x, y + 1); if (f[n] >= 0 && f[n] < bestD) { bestD = f[n]; best = n; } }
+    if (x - 1 >= 0) { const n = idx(x - 1, y); if (f[n] >= 0 && f[n] < bestD) { bestD = f[n]; best = n; } }
+    if (y - 1 >= 0) { const n = idx(x, y - 1); if (f[n] >= 0 && f[n] < bestD) { bestD = f[n]; best = n; } }
+    return best;
+  }
+
+  pathLength() {
+    if (this.mode === MODE_FIXED) return this.route.length - 1;
+    const s = this.flow[idx(this.sx, this.sy)];
+    return s < 0 ? 0 : s;
+  }
+
+  /* Що буде наступної хвилі — щоб було чим готуватись, а не дізнаватись
+     про броню тоді, коли вона вже пішла. */
+  nextInfo() {
+    const s = waveSpec(this.wave + 1);
+    return { kind:s.kind, n:s.n + (s.esc ? s.esc.n : 0), boss:!!s.esc };
+  }
+
+  /* Наскільки крип близько до виходу; менше — ближче. У фіксованому
+     режимі це залишок маршруту, бо на перехресті відстань по полю
+     збрехала б. */
+  progress(c) {
+    if (this.mode === MODE_FIXED) return this.route.length - 1 - c.ri;
+    const d = this.flow[idx(c.tx, c.ty)];
+    return d < 0 ? (1 << 29) : d;
+  }
+
+  /* Характеристики рахуємо раз — при будівництві й прокачці. */
+  recalcTower(t) {
+    const b = TOOL_BY_KEY[t.k], u = UPG[t.lvl];
+    t.st = {
+      cd:     b.cd,
+      dmg:    ((b.dmg * u.dmg) / 100) | 0,
+      range:  ((b.range * u.range) / 100) | 0,
+      shot:   b.shot,
+      splash: b.splash ? ((b.splash * u.range) / 100) | 0 : 0,
+      slow:   b.slow ? Math.min(70, b.slow + (t.lvl - 1) * 6) : 0,
+      slowT:  b.slowT | 0,
+      dot:    b.dot ? ((b.dot * u.dmg) / 100) | 0 : 0,
+      dotT:   b.dotT | 0,
+    };
+  }
+  upgradeCost(t) {
+    if (t.lvl >= MAX_LVL) return -1;
+    return ((TOOL_BY_KEY[t.k].cost * UPG[t.lvl + 1].pct) / 100) | 0;
+  }
+  /* Усе вкладене до межі хвилі вертається повністю, старіше — на 70%.
+     Прокачка рахується так само, як і сама будівля. */
+  refund(t) {
+    const old = t.spent - t.freshSpent;
+    return t.freshSpent + (((old * 70) / 100) | 0);
+  }
+  towerAt(x, y) { return this.towers.find(t => t.x === x && t.y === y) || null; }
+
+  buildable(x, y) {
+    if (x < 0 || y < 0 || x >= GW || y >= GH) return false;
+    const i = idx(x, y);
+    if (this.terrain[i] === 1) return false;                             // скеля
+    if (this.mode === MODE_FIXED && this.terrain[i] === 2) return false; // дорога
+    if (x === this.sx && y === this.sy) return false;
+    if (x === this.gx && y === this.gy) return false;
+    return this.blocked[i] === 0;
+  }
+
+  /* ── команди ─────────────────────────────────────────────────────────
+     Єдина точка входу для дій гравця. Для мережевої гри сюди приходять
+     чужі команди — більше нічого міняти не треба. */
+  apply(cmd) {
+    const p = this.players[cmd.p];
+    if (!p || this.over) return;
+
+    if (cmd.t === 'build') {
+      const tool = TOOL_BY_KEY[cmd.k];
+      if (!tool || !this.buildable(cmd.x, cmd.y)) { this.events.push({ e:'deny', p:cmd.p, why:'зайнято' }); return; }
+      if (p.gold < tool.cost) { this.events.push({ e:'deny', p:cmd.p, why:'мало золота' }); return; }
+
+      const i = idx(cmd.x, cmd.y);
+      this.blocked[i] = 1;
+      if (this.mode === MODE_MAZE) {          // у фіксованому режимі шлях не рухається
+        const test = this.recomputeFlow(new Int32Array(GW * GH));
+        let ok = test[idx(this.sx, this.sy)] >= 0;
+        if (ok) for (const c of this.creeps) { if (test[idx(c.ntx, c.nty)] < 0) { ok = false; break; } }
+        if (!ok) { this.blocked[i] = 0; this.events.push({ e:'deny', p:cmd.p, why:'прохід закрито' }); return; }
+        this.flow.set(test);
+      }
+      p.gold -= tool.cost;
+      // freshSpent — вкладене після останньої межі хвилі: вертається повністю
+      const nt = { x:cmd.x, y:cmd.y, k:tool.key, cd:0, owner:cmd.p, ax:1, ay:0,
+                   lvl:1, spent:tool.cost, freshSpent:tool.cost, aim:0 };
+      this.recalcTower(nt);
+      this.towers.push(nt);
+      this.events.push({ e:'build', x:cmd.x, y:cmd.y });
+      this.retargetAll();
+
+    } else if (cmd.t === 'raze') {
+      const n = this.towers.findIndex(t => t.x === cmd.x && t.y === cmd.y);
+      if (n < 0) return;
+      const t = this.towers[n];
+      this.towers.splice(n, 1);
+      this.blocked[idx(cmd.x, cmd.y)] = 0;
+      if (this.mode === MODE_MAZE) this.recomputeFlow();
+      const back = this.refund(t);
+      this.players[t.owner].gold += back;      // гроші вертаються власнику, не тому, хто зніс
+      this.events.push({ e:'raze', p:cmd.p, x:cmd.x, y:cmd.y, gold:back, full:t.freshSpent >= t.spent });
+      this.retargetAll();
+
+    } else if (cmd.t === 'up') {
+      const t = this.towerAt(cmd.x, cmd.y);
+      if (!t) return;
+      if (t.lvl >= MAX_LVL) { this.events.push({ e:'deny', p:cmd.p, why:'вже максимум' }); return; }
+      const cost = this.upgradeCost(t);
+      if (p.gold < cost) { this.events.push({ e:'deny', p:cmd.p, why:'мало золота' }); return; }
+      p.gold -= cost;
+      t.lvl++; t.spent += cost; t.freshSpent += cost;
+      this.recalcTower(t);
+      this.events.push({ e:'up', p:cmd.p, x:cmd.x, y:cmd.y, lvl:t.lvl });
+
+    } else if (cmd.t === 'aim') {
+      const t = this.towerAt(cmd.x, cmd.y);
+      if (!t || !t.st.cd) return;                 // бар'єр не цілиться
+      t.aim = (t.aim + 1) % AIMS.length;
+      this.events.push({ e:'aim', p:cmd.p, x:cmd.x, y:cmd.y, m:t.aim });
+
+    } else if (cmd.t === 'freeze') {
+      this.frozen = !!cmd.v;
+      this.events.push({ e:'freeze', p:cmd.p, v:this.frozen });
+
+    } else if (cmd.t === 'wave') {
+      if (this.phase === 0 && this.wave < 999) {
+        const bonus = ((this.prep / TPS) | 0) * 3;
+        p.gold += bonus;
+        this.prep = 0;
+        if (bonus > 0) this.events.push({ e:'early', gold:bonus });
+      }
+    }
+  }
+
+  /* Після зміни лабіринту крипи мають переобрати наступну клітину,
+     інакше пішли б у щойно поставлену башту. */
+  retargetAll() {
+    if (this.mode === MODE_FIXED) return;      // маршрут не залежить від забудови
+    for (const c of this.creeps) {
+      const n = this.stepTile(c.tx, c.ty, this.flow);
+      if (n >= 0) { c.ntx = n % GW; c.nty = (n / GW) | 0; }
+    }
+  }
+
+  startWave() {
+    for (const t of this.towers) t.freshSpent = 0;  // межа хвилі знімає повне повернення
+    this.wave++;
+    const s = waveSpec(this.wave);
+    this.spec  = s;
+    this.queue = [];
+    for (let i = 0; i < s.n; i++) this.queue.push(s);
+    // бос іде не сам: інакше вся хвиля — одна ціль, і мортира марна
+    if (s.esc) for (let i = 0; i < s.esc.n; i++) this.queue.push(s.esc);
+    this.toSpawn  = this.queue.length;
+    this.spawnGap = this.queue.length > 4 ? 14 : 40;
+    this.spawnCd  = 0;
+    this.phase    = 1;
+    this.events.push({ e:'wave', n:this.wave, kind:s.kind, esc:!!s.esc });
+  }
+
+  spawnOne() {
+    const s = this.queue.shift();
+    if (!s) return;
+    /* Здоров'я масштабується покриттям мапи, золото — НІ. Якби масштабувались
+       обидва, слабша мапа давала б і менше веж, і виграшу не було б. */
+    const hp   = (((((s.hp * this.diff) / 100) | 0) * this.cov) / BALANCE.refCoverage) | 0;
+    const gold = (((s.gold * BALANCE.killCut) / 100) | 0) || 1;
+    const c = {
+      id: this.nextCreepId++, ri: 0,
+      tx: this.sx, ty: this.sy, ntx: this.sx, nty: this.sy,
+      x: this.sx * SUB + (SUB >> 1), y: this.sy * SUB + (SUB >> 1),
+      px: this.sx * SUB + (SUB >> 1), py: this.sy * SUB + (SUB >> 1),
+      hp, maxHp: hp, sp: s.sp, kind: s.kind, gold,
+      slowT: 0, slowP: 0, dotT: 0, dotD: 0, dotCd: 0, hurt: 0,
+    };
+    this.creeps.push(c);
+    const n = this.mode === MODE_FIXED
+      ? (this.route.length > 1 ? this.route[1] : -1)
+      : this.stepTile(this.sx, this.sy, this.flow);
+    if (n >= 0) { c.ntx = n % GW; c.nty = (n / GW) | 0; }
+  }
+
+  /* ── один тік ────────────────────────────────────────────────────── */
+  step(cmds) {
+    this.events.length = 0;
+    if (this.over) { this.tick++; return; }
+
+    if (cmds) for (const c of cmds) this.apply(c);
+
+    // На паузі команди вже застосовано, а світ не рухається.
+    if (this.frozen) { this.tick++; return; }
+
+    // фаза хвилі
+    if (this.phase === 0) {
+      if (--this.prep <= 0) this.startWave();
+    } else {
+      if (this.toSpawn > 0) {
+        if (--this.spawnCd <= 0) { this.spawnOne(); this.toSpawn--; this.spawnCd = this.spawnGap; }
+      } else if (this.creeps.length === 0) {
+        const bonus = BALANCE.waveBonus(this.wave);
+        for (const p of this.players) p.gold += bonus;   // премія кожному
+        this.events.push({ e:'clear', n:this.wave, gold:bonus });
+        for (const t of this.towers) t.freshSpent = 0;
+        this.phase = 0;
+        this.prep  = TPS * BALANCE.prepAfter;
+      }
+    }
+
+    this.moveCreeps();
+    this.fireTowers();
+    this.moveShots();
+
+    if (this.lives <= 0) { this.over = true; this.events.push({ e:'lost' }); }
+    this.tick++;
+  }
+
+  moveCreeps() {
+    const keep = [];
+    for (const c of this.creeps) {
+      c.px = c.x; c.py = c.y;
+      if (c.hurt > 0) c.hurt--;
+
+      // отрута
+      if (c.dotT > 0) {
+        c.dotT--;
+        if (--c.dotCd <= 0) { c.dotCd = 15; c.hp -= c.dotD; }
+      }
+      if (c.hp <= 0) { this.kill(c, -1); continue; }
+
+      // сповільнення
+      let sp = c.sp;
+      if (c.slowT > 0) { c.slowT--; sp = ((sp * (100 - c.slowP)) / 100) | 0; if (sp < 1) sp = 1; }
+
+      // рух по осях — ціль завжди ортогональний сусід
+      let budget = sp, arrived = false;
+      for (let guard = 0; guard < 6 && budget > 0; guard++) {
+        const cx = c.ntx * SUB + (SUB >> 1), cy = c.nty * SUB + (SUB >> 1);
+        const dx = cx - c.x, dy = cy - c.y;
+        if (dx === 0 && dy === 0) {
+          c.tx = c.ntx; c.ty = c.nty;
+          if (this.mode === MODE_FIXED) {
+            c.ri++;                                       // крок уперед по маршруту
+            if (c.ri >= this.route.length - 1) { arrived = true; break; }
+            const n = this.route[c.ri + 1];
+            c.ntx = n % GW; c.nty = (n / GW) | 0;
+            continue;
+          }
+          if (c.tx === this.gx && c.ty === this.gy) { arrived = true; break; }
+          const n = this.stepTile(c.tx, c.ty, this.flow);
+          if (n < 0) break;                       // шляху нема — стоїмо
+          c.ntx = n % GW; c.nty = (n / GW) | 0;
+          continue;
+        }
+        if (dx !== 0) {
+          const s = dx > 0 ? 1 : -1, m = Math.abs(dx) < budget ? Math.abs(dx) : budget;
+          c.x += s * m; budget -= m;
+        } else {
+          const s = dy > 0 ? 1 : -1, m = Math.abs(dy) < budget ? Math.abs(dy) : budget;
+          c.y += s * m; budget -= m;
+        }
+      }
+
+      if (arrived) {
+        const dmg = c.kind === 3 ? 5 : 1;
+        this.lives -= dmg;
+        this.events.push({ e:'leak', dmg, x:c.x, y:c.y });
+        continue;
+      }
+      keep.push(c);
+    }
+    this.creeps = keep;
+  }
+
+  kill(c, owner) {
+    let g = c.gold;
+    if (this.randMod(100) < BALANCE.bountyPct) { g *= 2; this.events.push({ e:'bounty', x:c.x, y:c.y, gold:g }); }
+    this.players[owner >= 0 ? owner : 0].gold += g;
+    this.events.push({ e:'kill', x:c.x, y:c.y });
+  }
+
+  /* Ціль — той крип, що найближче до виходу. Дистанція береться з
+     потокового поля, тож вибір однаковий у всіх клієнтів. */
+  pickTarget(t) {
+    const cx = t.x * SUB + (SUB >> 1), cy = t.y * SUB + (SUB >> 1);
+    const r2 = t.st.range * t.st.range;
+    let best = null, bestK = 0;
+    for (const c of this.creeps) {
+      const dx = c.x - cx, dy = c.y - cy;
+      if (dx * dx + dy * dy > r2) continue;
+      let k;
+      if (t.aim === 1) k = -this.progress(c);        // останній
+      else if (t.aim === 2) k = -c.hp;               // найміцніший
+      else if (t.aim === 3) k = c.hp;                // найслабший
+      else k = this.progress(c);                     // перший до виходу
+      if (!best || k < bestK || (k === bestK && c.id < best.id)) { bestK = k; best = c; }
+    }
+    return best;
+  }
+
+  fireTowers() {
+    for (const t of this.towers) {
+      const st = t.st;
+      if (st.cd === 0) continue;
+      if (t.cd > 0) { t.cd--; continue; }
+      const tgt = this.pickTarget(t);
+      if (!tgt) continue;
+      t.cd = st.cd;
+      const cx = t.x * SUB + (SUB >> 1), cy = t.y * SUB + (SUB >> 1);
+      t.ax = tgt.x - cx; t.ay = tgt.y - cy;      // напрям ствола цілими; кут рахує рендер
+      this.shots.push({
+        x:cx, y:cy, px:cx, py:cy, tid:tgt.id, k:t.k, owner:t.owner,
+        dmg:st.dmg, sp:st.shot, splash:st.splash,
+        slow:st.slow, slowT:st.slowT, dot:st.dot, dotT:st.dotT,
+      });
+    }
+  }
+
+  moveShots() {
+    const keep = [];
+    for (const s of this.shots) {
+      s.px = s.x; s.py = s.y;
+      const tgt = this.creeps.find(c => c.id === s.tid);
+      if (!tgt) continue;                       // ціль зникла — набій згасає
+      const dx = tgt.x - s.x, dy = tgt.y - s.y;
+      const d = isqrt(dx * dx + dy * dy);
+      if (d <= s.sp || d === 0) { this.impact(s, tgt); continue; }
+      s.x += ((dx * s.sp) / d) | 0;
+      s.y += ((dy * s.sp) / d) | 0;
+      keep.push(s);
+    }
+    this.shots = keep;
+  }
+
+  hurt(c, dmg, owner) {
+    const a = ARMOR[c.kind];
+    let d = dmg - a;
+    if (d < 1) d = 1;
+    c.hp -= d;
+    c.hurt = 3;
+    if (c.hp <= 0) {
+      const n = this.creeps.indexOf(c);
+      if (n >= 0) this.creeps.splice(n, 1);
+      this.kill(c, owner);
+    }
+  }
+
+  impact(s, tgt) {
+    this.events.push({ e:'hit', x:s.x, y:s.y, k:s.k });
+    if (s.splash > 0) {
+      const r2 = s.splash * s.splash;
+      const hitList = [];
+      for (const c of this.creeps) {
+        const dx = c.x - s.x, dy = c.y - s.y;
+        if (dx * dx + dy * dy <= r2) hitList.push(c);
+      }
+      hitList.sort((a, b) => a.id - b.id);       // сталий порядок = сталий результат
+      for (const c of hitList) this.hurt(c, s.dmg, s.owner);
+      this.events.push({ e:'boom', x:s.x, y:s.y, r:s.splash });
+    } else {
+      if (s.slow > 0) { tgt.slowP = s.slow; tgt.slowT = s.slowT; }
+      if (s.dot > 0)  { tgt.dotD = s.dot; tgt.dotT = s.dotT; if (tgt.dotCd <= 0) tgt.dotCd = 15; }
+      this.hurt(tgt, s.dmg, s.owner);
+    }
+  }
+
+  /* ── хеш стану: єдине число, яким клієнти звіряються ── */
+  hash() {
+    let h = 0x811c9dc5;
+    const mix = v => { h ^= (v | 0); h = Math.imul(h, 0x01000193); };
+    mix(this.tick); mix(this.lives); mix(this.wave); mix(this.rng);
+    for (const p of this.players) mix(p.gold);
+    for (const t of this.towers) { mix(t.x); mix(t.y); mix(t.cd); mix(t.lvl); mix(t.aim); mix(t.k.charCodeAt(0)); }
+    for (const c of this.creeps) { mix(c.id); mix(c.x); mix(c.y); mix(c.hp); mix(c.slowT); }
+    for (const s of this.shots)  { mix(s.x); mix(s.y); mix(s.tid); }
+    return (h >>> 0).toString(16).padStart(8, '0');
+  }
+}
+
+/* ===SIM-CORE-END=== */
+
+/* ══════════════════════════════════════════════════════════════════════
+   ЧАСТИНА 2 · ЛОК-СТЕП І МЕРЕЖА
+   По дроту не їде жоден крип і жодна башта — тільки натискання. Обидві
+   сторони крутять те саме ядро й приходять до того самого стану; хеш
+   раз на дві секунди це підтверджує.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* Код запрошення: JSON → deflate → base64url. SDP довгий, стиснення
+   робить його придатним для вставки в чат. */
+async function packCode(obj) {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  let out = bytes;
+  if (typeof CompressionStream === 'function') {
+    const st = new Blob([bytes]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    out = new Uint8Array(await new Response(st).arrayBuffer());
+  }
+  let s = '';
+  for (let i = 0; i < out.length; i++) s += String.fromCharCode(out[i]);
+  return (typeof CompressionStream === 'function' ? 'Z' : 'P') +
+         btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+async function unpackCode(code) {
+  const tag = code[0];
+  let b64 = code.slice(1).replace(/-/g, '+').replace(/_/g, '/');
+  while (b64.length % 4) b64 += '=';
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  if (tag === 'Z') {
+    const st = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return JSON.parse(new TextDecoder().decode(await new Response(st).arrayBuffer()));
+  }
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function iceDone(pc, ms) {
+  return new Promise(res => {
+    if (pc.iceGatheringState === 'complete') return res();
+    let tm = 0;
+    const fin = () => { pc.removeEventListener('icegatheringstatechange', chk); clearTimeout(tm); res(); };
+    const chk = () => { if (pc.iceGatheringState === 'complete') fin(); };
+    pc.addEventListener('icegatheringstatechange', chk);
+    tm = setTimeout(fin, ms);
+  });
+}
+
+const ICE = { iceServers: [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+] };
+
+class Net {
+  constructor() {
+    this.pc = null; this.dc = null;
+    this.state = 'off';          // off | waiting | live | dead
+    this.me = 0;                 // 0 — господар, 1 — гість
+    this.rtt = 0;
+    this.onCmds = null; this.onHash = null; this.onRestart = null; this.onState = null;
+  }
+  get live() { return this.state === 'live'; }
+  get solo() { return this.state === 'off'; }
+
+  setState(s) { this.state = s; if (this.onState) this.onState(s); }
+
+  wire(dc) {
+    this.dc = dc;
+    dc.onopen = () => { this.setState('live'); this.ping(); };
+    dc.onclose = () => this.setState('dead');
+    dc.onerror = () => this.setState('dead');
+    dc.onmessage = ev => {
+      let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (m.t === 'c' && this.onCmds) this.onCmds(m.g, m.k, m.m);
+      else if (m.t === 'h' && this.onHash) this.onHash(m.g, m.k, m.h);
+      else if (m.t === 'r' && this.onRestart) this.onRestart(m.g, m.s);
+      else if (m.t === 'ping') this.send({ t:'pong', at:m.at });
+      else if (m.t === 'pong') this.rtt = Math.round(performance.now() - m.at);
+    };
+  }
+  ping() {
+    if (!this.live) return;
+    this.send({ t:'ping', at: performance.now() });
+    setTimeout(() => this.ping(), 2000);
+  }
+  send(o) { if (this.dc && this.dc.readyState === 'open') this.dc.send(JSON.stringify(o)); }
+
+  async host(setup) {
+    this.me = 0;
+    this.pc = new RTCPeerConnection(ICE);
+    this.wire(this.pc.createDataChannel('lockstep', { ordered: true }));
+    await this.pc.setLocalDescription(await this.pc.createOffer());
+    await iceDone(this.pc, 3500);
+    this.setState('waiting');
+    return packCode({ r:'o', sdp: this.pc.localDescription, s: setup });
+  }
+  async join(code) {
+    const m = await unpackCode(code);
+    if (m.r !== 'o') throw new Error('це не код запрошення');
+    this.me = 1;
+    this.pc = new RTCPeerConnection(ICE);
+    this.pc.ondatachannel = e => this.wire(e.channel);
+    await this.pc.setRemoteDescription(m.sdp);
+    await this.pc.setLocalDescription(await this.pc.createAnswer());
+    await iceDone(this.pc, 3500);
+    this.setState('waiting');
+    return { code: await packCode({ r:'a', sdp: this.pc.localDescription }), s: m.s };
+  }
+  async confirm(code) {
+    const m = await unpackCode(code);
+    if (m.r !== 'a') throw new Error('це не код відповіді');
+    await this.pc.setRemoteDescription(m.sdp);
+  }
+}
+
+/* Планувальник. Тік N виконується лише коли є команди ВІД УСІХ за цей
+   тік. Свої команди публікуються на DELAY тіків уперед — цей запас і
+   ховає затримку каналу. */
+const DELAY = 5;
+
+class Lockstep {
+  constructor(peers) {
+    this.peers = peers;
+    this.local = new Map();      // tick → мої команди
+    this.remote = new Map();     // tick → чужі команди
+    this.hist = [];              // повний лог для перевірки
+    this.pending = [];           // натиснуте, ще не опубліковане
+    this.published = DELAY - 1;
+    this.seq = 0;
+    for (let t = 0; t < DELAY; t++) { this.local.set(t, []); this.remote.set(t, []); }
+  }
+  queue(cmd) { cmd.seq = this.seq++; this.pending.push(cmd); }
+  publishTo(tick, send) {
+    while (this.published < tick) {
+      this.published++;
+      const batch = this.pending; this.pending = [];
+      this.local.set(this.published, batch);
+      if (send) send(this.published, batch);
+    }
+  }
+  acceptRemote(tick, cmds) { this.remote.set(tick, cmds); }
+  ready(tick, networked) { return !networked || this.remote.has(tick); }
+  merged(tick) {
+    const a = (this.local.get(tick) || []).concat(this.remote.get(tick) || []);
+    a.sort((x, y) => (x.p - y.p) || (x.seq - y.seq));   // порядок не залежить від мережі
+    for (const c of a) this.hist.push({ tick, cmd: c });
+    this.local.delete(tick); this.remote.delete(tick);
+    return a.length ? a : null;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   ЧАСТИНА 3 · ЗВ'ЯЗКА, ВВІД, МАЛЮВАННЯ
+   Усе нижче може бути яким завгодно — на стан симуляції воно не впливає.
+   ══════════════════════════════════════════════════════════════════════ */
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const css = getComputedStyle(document.documentElement);
+const C   = n => css.getPropertyValue(n).trim();
+
+const el = {
+  wave:  document.getElementById('rWave'),  lives: document.getElementById('rLives'),
+  gold:  document.getElementById('rGold'),  path:  document.getElementById('rPath'),
+  tick:  document.getElementById('rTick'),  hash:  document.getElementById('rHash'),
+  log:   document.getElementById('log'),    rail:  document.getElementById('rail'),
+  veil:  document.getElementById('veil'),   veilT: document.getElementById('veilTitle'),
+  veilX: document.getElementById('veilText'), veilB: document.getElementById('veilBtn'),
+  wave_: document.getElementById('btnWave'), pause: document.getElementById('btnPause'),
+  speed: document.getElementById('btnSpeed'), verify: document.getElementById('btnVerify'),
+  seed:  document.getElementById('seed'),   diff:  document.getElementById('diff'),
+  showPath: document.getElementById('showPath'), showRange: document.getElementById('showRange'),
+  mate: document.getElementById('rMate'), sMate: document.getElementById('sMate'),
+  host: document.getElementById('btnHost'), use: document.getElementById('btnUse'),
+  copy: document.getElementById('btnCopy'), code: document.getElementById('codeBox'),
+  netState: document.getElementById('netState'), coopHint: document.getElementById('coopHint'),
+  mapSel: document.getElementById('mapSel'), modeSel: document.getElementById('modeSel'),
+  mapNote: document.getElementById('mapNote'), next: document.getElementById('rNext'),
+};
+
+MAPS.forEach((m, i) => {
+  const o = document.createElement('option');
+  o.value = String(i); o.textContent = m.name;
+  el.mapSel.appendChild(o);
+});
+
+let sim, ls, tool = TOOLS[1], paused = false, speed = 1;
+let hoverX = -1, hoverY = -1, acc = 0, last = 0;
+let fx = [], looping = false, stalled = false, desync = null;
+
+const net = new Net();
+const myHash = new Map(), theirHash = new Map();
+
+/* Номер покоління партії. Після перезапуску він росте, і команди зі
+   старої партії, що ще летять каналом, не потраплять у нову. */
+let gen = 0;
+const stash = [];
+
+const meId = () => (net.solo ? 0 : net.me);
+
+function boot(g) {
+  if (g !== undefined) gen = g;
+  const n = net.solo ? 1 : 2;
+  sim = new Sim(el.seed.value || 'MAZE-01', parseInt(el.diff.value, 10), n,
+                parseInt(el.mapSel.value, 10), parseInt(el.modeSel.value, 10));
+  ls  = new Lockstep(n);
+  myHash.clear(); theirHash.clear();
+  fx = []; paused = false; acc = 0; last = 0; stalled = false; desync = null;
+  el.pause.textContent = 'Пауза';
+  el.veil.hidden = true;
+  el.log.innerHTML = '';
+  say((n > 1 ? 'Кооп, гравець ' + (net.me + 1) + ' · ' : 'Забіг · ') + sim.map.name + ' · ' +
+      (sim.mode === MODE_FIXED ? 'фіксований шлях' : 'лабіринт') + ' · сід ' + sim.seedStr, 'note');
+  el.mapNote.textContent = sim.mode === MODE_FIXED
+    ? sim.map.note + ' · ' + sim.pathLength() + ' клітин'
+    : 'лабіринт: трасу будуєш сам, скелі не забудовуються';
+  el.sMate.hidden = n < 2;
+  // команди нової партії, що прилетіли раніше за нас
+  for (let i = stash.length - 1; i >= 0; i--) {
+    if (stash[i].g === gen) { ls.acceptRemote(stash[i].k, stash[i].m); stash.splice(i, 1); }
+    else if (stash[i].g < gen) stash.splice(i, 1);
+  }
+  drawRail();
+  if (!looping) { looping = true; requestAnimationFrame(frame); }
+}
+
+/* ── арсенал ─────────────────────────────────────────────────────────── */
+function drawRail() {
+  el.rail.querySelectorAll('.tool').forEach(n => n.remove());
+  TOOLS.forEach((t, i) => {
+    const b = document.createElement('button');
+    b.className = 'tool';
+    b.style.setProperty('--swatch', C(t.swatch));
+    b.setAttribute('aria-pressed', String(tool === t));
+    b.innerHTML =
+      '<span class="key">' + (i + 1) + '</span>' +
+      '<span class="nm"><b></b><i></i><u></u></span>' +
+      '<span class="cost">' + t.cost + '</span>';
+    b.querySelector('b').textContent = t.name;
+    b.querySelector('i').textContent = t.blurb;
+    b.querySelector('u').textContent = t.cd
+      ? Math.round(t.dmg * TPS / t.cd) + ' шк/с · радіус ' + (t.range / SUB).toFixed(1)
+      : 'перекриває клітину';
+    b.onclick = () => { tool = t; refreshRail(); };
+    el.rail.appendChild(b);
+  });
+  const extras = [
+    { id:'up',   key:'U', cls:'', name:'Прокачати', hint:'До 3 рівня: більше шкоди й радіус.', sub:'ціна росте, місце те саме', mark:'▲' },
+    { id:'aim',  key:'T', cls:'', name:'Ціль',      hint:'Перший / останній / міцний / слабкий.', sub:'клац по башті — наступний режим', mark:'◎' },
+    { id:'raze', key:'0', cls:'raze', name:'Знести', hint:'Вкладене до межі хвилі — усе назад.', sub:'старіше вже 70%', mark:'↩' },
+  ];
+  for (const x of extras) {
+    const b = document.createElement('button');
+    b.className = 'tool ' + x.cls;
+    b.dataset.mode = x.id;
+    b.innerHTML = '<span class="key">' + x.key + '</span><span class="nm"><b></b><i></i><u></u></span>' +
+                  '<span class="cost">' + x.mark + '</span>';
+    b.querySelector('b').textContent = x.name;
+    b.querySelector('i').textContent = x.hint;
+    b.querySelector('u').textContent = x.sub;
+    b.onclick = () => { tool = x.id; refreshRail(); };
+    el.rail.appendChild(b);
+  }
+  refreshRail();
+}
+function refreshRail() {
+  const gold = sim.players[meId()].gold;
+  el.rail.querySelectorAll('.tool').forEach(b => {
+    if (b.dataset.mode) {
+      b.setAttribute('aria-pressed', String(tool === b.dataset.mode));
+    } else {
+      const t = TOOLS[+b.querySelector('.key').textContent - 1];
+      b.setAttribute('aria-pressed', String(tool === t));
+      b.classList.toggle('poor', gold < t.cost);
+    }
+  });
+}
+
+/* ── журнал ──────────────────────────────────────────────────────────── */
+function say(text, cls) {
+  const d = document.createElement('div');
+  if (cls) d.className = cls;
+  const s = (sim ? sim.tick : 0) / TPS;
+  const mm = String((s / 60) | 0).padStart(2, '0'), ss = String((s | 0) % 60).padStart(2, '0');
+  d.innerHTML = '<span class="t">' + mm + ':' + ss + '</span> ' + text;
+  el.log.appendChild(d);
+  while (el.log.children.length > 40) el.log.removeChild(el.log.firstChild);
+}
+
+/* ── ввід ────────────────────────────────────────────────────────────── */
+function enqueue(cmd) {
+  if (sim.over || desync) return;
+  cmd.p = meId();
+  ls.queue(cmd);
+}
+function tileAt(ev) {
+  const r = cv.getBoundingClientRect();
+  const x = ((ev.clientX - r.left) / r.width * GW) | 0;
+  const y = ((ev.clientY - r.top) / r.height * GH) | 0;
+  return [Math.max(0, Math.min(GW - 1, x)), Math.max(0, Math.min(GH - 1, y))];
+}
+cv.addEventListener('mousemove', e => { const [x, y] = tileAt(e); hoverX = x; hoverY = y; });
+cv.addEventListener('mouseleave', () => { hoverX = hoverY = -1; });
+cv.addEventListener('contextmenu', e => { e.preventDefault(); const [x, y] = tileAt(e); enqueue({ t:'raze', x, y }); });
+cv.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  const [x, y] = tileAt(e);
+  if (tool === 'raze') enqueue({ t:'raze', x, y });
+  else if (tool === 'up') enqueue({ t:'up', x, y });
+  else if (tool === 'aim') enqueue({ t:'aim', x, y });
+  else enqueue({ t:'build', x, y, k:tool.key });
+});
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  const k = e.key.toLowerCase();
+  if (k >= '1' && k <= '6') { tool = TOOLS[+k - 1]; refreshRail(); }
+  else if (k === '0') { tool = 'raze'; refreshRail(); }
+  else if (k === 'u') { tool = 'up'; refreshRail(); }
+  else if (k === 't') { tool = 'aim'; refreshRail(); }
+  else if (k === 'escape') { tool = TOOLS[1]; refreshRail(); }
+  else if (k === ' ') { e.preventDefault(); togglePause(); }
+  else if (k === 'f') cycleSpeed();
+  else if (k === 'n') enqueue({ t:'wave' });
+});
+function togglePause() {
+  if (net.live) { say('У кооперативі паузи немає', 'bad'); return; }
+  paused = !paused;
+  el.pause.textContent = paused ? 'Далі' : 'Пауза';
+  enqueue({ t:'freeze', v: paused ? 1 : 0 });   // пауза — така сама команда, як будівництво
+}
+function cycleSpeed() {
+  if (net.live) { say('Швидкість фіксована в кооперативі', 'bad'); return; }
+  speed = speed === 1 ? 2 : speed === 2 ? 3 : 1; el.speed.textContent = speed + '×';
+}
+const readSetup = () => ({
+  seed: el.seed.value || 'MAZE-01', diff: parseInt(el.diff.value, 10),
+  map: parseInt(el.mapSel.value, 10), mode: parseInt(el.modeSel.value, 10),
+});
+function writeSetup(s) {
+  if (!s) return;
+  el.seed.value = s.seed; el.diff.value = String(s.diff);
+  el.mapSel.value = String(s.map | 0); el.modeSel.value = String(s.mode | 0);
+}
+function restart() {
+  if (net.live && net.me !== 0) { say('Новий забіг починає господар', 'bad'); return; }
+  if (net.live) {
+    net.send({ t:'r', g: gen + 1, s: readSetup() });
+    boot(gen + 1);
+  } else boot();
+}
+el.pause.onclick = togglePause;
+el.speed.onclick = cycleSpeed;
+el.wave_.onclick = () => enqueue({ t:'wave' });
+document.getElementById('restart').onclick = restart;
+el.veilB.onclick = restart;
+el.seed.onchange = restart;
+el.diff.onchange = restart;
+el.mapSel.onchange = restart;
+el.modeSel.onchange = restart;
+
+/* ── перевірка детермінізму ──────────────────────────────────────────── */
+el.verify.onclick = () => {
+  const target = sim.tick, want = sim.hash();
+  const shadow = new Sim(sim.seedStr, sim.diff, sim.nPlayers, sim.mapIdx, sim.mode);
+  const plan = new Map();
+  for (const r of ls.hist) {
+    if (!plan.has(r.tick)) plan.set(r.tick, []);
+    plan.get(r.tick).push(r.cmd);
+  }
+  for (let t = 0; t < target; t++) {
+    const c = plan.get(t);
+    if (c) c.sort((x, y) => (x.p - y.p) || (x.seq - y.seq));
+    shadow.step(c || null);
+  }
+  const got = shadow.hash();
+  const ok = got === want;
+  el.veil.hidden = false;
+  el.veil.className = 'veil verify';
+  el.veilT.textContent = ok ? 'Збіг' : 'Розбіжність';
+  el.veilX.textContent = ok
+    ? target + ' тіків, ' + ls.hist.length + ' команд переграно з нуля → ' + got
+    : 'очікували ' + want + ', отримали ' + got;
+  el.veilB.textContent = 'Продовжити';
+  el.veilB.onclick = () => { el.veil.hidden = true; el.veilB.onclick = restart; el.veilB.textContent = 'Новий забіг'; };
+  say(ok ? 'Детермінізм підтверджено: ' + got : 'РОЗБІЖНІСТЬ: ' + want + ' ≠ ' + got, ok ? 'good' : 'bad');
+};
+
+/* ── кооператив: обмін кодами ────────────────────────────────────────── */
+net.onCmds = (g, tick, cmds) => {
+  if (g === gen) ls.acceptRemote(tick, cmds);
+  else if (g > gen) stash.push({ g, k:tick, m:cmds });   // партія, до якої ми ще не дійшли
+};
+net.onHash = (g, tick, h) => { if (g === gen) { theirHash.set(tick, h); compareHash(tick); } };
+net.onRestart = (g, s) => { writeSetup(s); boot(g); };
+net.onState   = s => {
+  const cls = s === 'live' ? 'live' : s === 'waiting' ? 'waiting' : s === 'dead' ? 'dead' : '';
+  el.netState.className = 'netState ' + cls;
+  el.netState.innerHTML = '<span class="dot"></span>' +
+    (s === 'live' ? ('Гравець ' + (net.me + 1)) : s === 'waiting' ? 'Чекаю' : s === 'dead' ? 'Розрив' : 'Соло');
+  if (s === 'live') {
+    paused = false; speed = 1; el.speed.textContent = '1×'; el.pause.textContent = 'Пауза';
+    el.code.value = ''; el.coopHint.textContent = 'З’єднано. Життя спільні, золото окреме.';
+    say('З’єднання встановлено', 'good');
+    boot(0);                      // обидві сторони стартують з тіку 0, покоління 0
+  } else if (s === 'dead') {
+    el.coopHint.textContent = 'Канал розірвано.';
+    say('Напарник від’єднався', 'bad');
+  }
+};
+
+el.host.onclick = async () => {
+  if (net.state !== 'off') { say('З’єднання вже почато', 'bad'); return; }
+  el.coopHint.textContent = 'Готую код…';
+  try {
+    el.code.value = await net.host(readSetup());
+    el.code.select();
+    el.coopHint.textContent = 'Надішли цей код другу, тоді встав його відповідь сюди.';
+  } catch (e) { el.coopHint.textContent = 'Не вийшло: ' + e.message; }
+};
+
+el.use.onclick = async () => {
+  const code = el.code.value.trim();
+  if (!code) { el.coopHint.textContent = 'Спершу встав код.'; return; }
+  try {
+    if (net.state === 'off') {                       // гість приймає запрошення
+      const r = await net.join(code);
+      writeSetup(r.s);                                 // мапа, режим, сід і складність — від господаря
+      el.code.value = r.code; el.code.select();
+      el.coopHint.textContent = 'Надішли цю відповідь господарю.';
+    } else if (net.me === 0 && net.state === 'waiting') {   // господар приймає відповідь
+      await net.confirm(code);
+      el.coopHint.textContent = 'Відповідь прийнято, з’єднуємось…';
+    } else {
+      el.coopHint.textContent = 'Зараз нічого застосовувати.';
+    }
+  } catch (e) { el.coopHint.textContent = 'Код не підійшов: ' + e.message; }
+};
+
+el.copy.onclick = () => {
+  if (!el.code.value) return;
+  el.code.select();
+  navigator.clipboard.writeText(el.code.value)
+    .then(() => { el.coopHint.textContent = 'Скопійовано.'; })
+    .catch(() => { el.coopHint.textContent = 'Скопіюй вручну: Ctrl+C.'; });
+};
+
+/* ── цикл ────────────────────────────────────────────────────────────── */
+function frame(now) {
+  if (!last) last = now;
+  let dt = now - last; last = now;
+  if (dt > 250) dt = 250;
+  const stepMs = 1000 / TPS;
+  const wired = net.live;
+  const sender = wired ? ((t, b) => net.send({ t:'c', g:gen, k:t, m:b })) : null;
+
+  // На паузі цикл не зупиняємо: тіки йдуть, світ стоїть, команди доходять.
+  if (!sim.over && !desync && (net.solo || wired)) {
+    acc += dt * (sim.frozen ? 1 : speed);
+    let guard = 0;
+    stalled = false;
+    while (acc >= stepMs && guard++ < 12) {
+      // спершу віддаємо свій ввід на DELAY тіків уперед — саме цей запас
+      // і ховає затримку каналу
+      ls.publishTo(sim.tick + DELAY, sender);
+      if (!ls.ready(sim.tick, wired)) { stalled = true; break; }
+      acc -= stepMs;
+      sim.step(ls.merged(sim.tick));
+      digest();
+      if (wired && sim.tick % 60 === 0) {
+        const h = sim.hash();
+        myHash.set(sim.tick, h);
+        net.send({ t:'h', g:gen, k:sim.tick, h });
+        compareHash(sim.tick);
+      }
+    }
+    if (stalled && acc > stepMs * 3) acc = stepMs * 3;   // не копимо борг, поки чекаємо
+  }
+  render(sim.frozen || sim.over ? 1 : Math.min(1, acc / stepMs));
+  hud();
+  requestAnimationFrame(frame);
+}
+
+function compareHash(t) {
+  const a = myHash.get(t), b = theirHash.get(t);
+  if (!a || !b || a === b) return;
+  desync = { t, a, b };
+  say('ДЕСИНК на тіку ' + t + ': ' + a + ' ≠ ' + b, 'bad');
+  el.veil.hidden = false;
+  el.veil.className = 'veil lost';
+  el.veilT.textContent = 'Розсинхрон';
+  el.veilX.textContent = 'Тік ' + t + ' · у тебе ' + a + ' · у напарника ' + b;
+  el.veilB.textContent = 'Новий забіг';
+  el.veilB.onclick = restart;
+}
+
+/* Події симуляції → журнал і спалахи. Читаємо, не пишемо. */
+function digest() {
+  for (const e of sim.events) {
+    if (e.e === 'wave')       say('Хвиля ' + e.n + ' — ' + KIND_NAME[e.kind] + (e.esc ? ' із супроводом' : ''), 'note');
+    else if (e.e === 'up')    { if (e.p === meId()) say('Прокачано до рівня ' + e.lvl, 'good'); }
+    else if (e.e === 'aim')   { if (e.p === meId()) say('Ціль: ' + AIMS[e.m], 'note'); }
+    else if (e.e === 'clear') say('Хвилю ' + e.n + ' відбито. +' + e.gold + ' зол.', 'good');
+    else if (e.e === 'leak')  { say('Прорив! −' + e.dmg + ' життя', 'bad'); fx.push({ t:'ring', x:e.x, y:e.y, life:20, max:20, c:C('--coral') }); }
+    else if (e.e === 'raze')  { if (e.p === meId()) say(e.full ? ('Знесено, повернено все: +' + e.gold) : ('Знесено зі штрафом: +' + e.gold), e.full ? 'good' : null); }
+    else if (e.e === 'deny')  { if (e.p === meId()) say('Не можна: ' + e.why, 'bad'); }
+    else if (e.e === 'early') say('Достроково. +' + e.gold + ' зол.', 'good');
+    else if (e.e === 'lost')  showLost();
+    else if (e.e === 'boom')  fx.push({ t:'ring', x:e.x, y:e.y, life:12, max:12, c:C('--t-mortar'), r:e.r });
+    else if (e.e === 'bounty')fx.push({ t:'spark', x:e.x, y:e.y, life:22, max:22, c:C('--brass') });
+    else if (e.e === 'kill')  fx.push({ t:'spark', x:e.x, y:e.y, life:10, max:10, c:C('--text-faint') });
+  }
+  for (const f of fx) f.life--;
+  fx = fx.filter(f => f.life > 0);
+}
+function showLost() {
+  el.veil.hidden = false;
+  el.veil.className = 'veil lost';
+  el.veilT.textContent = 'Оборону зламано';
+  el.veilX.textContent = 'Витримано хвиль: ' + (sim.wave - 1) + ' · сід ' + sim.seedStr;
+  el.veilB.textContent = 'Новий забіг';
+  el.veilB.onclick = boot;
+}
+
+function hud() {
+  const me = meId();
+  el.wave.textContent  = sim.wave;
+  el.lives.textContent = sim.lives;
+  el.lives.className   = 'v' + (sim.lives <= 5 ? ' warn' : '');
+  el.gold.textContent  = sim.players[me].gold;
+  if (sim.players.length > 1) el.mate.textContent = sim.players[1 - me].gold;
+  el.path.innerHTML    = sim.pathLength() + '<small> кл.</small>';
+  const nx = sim.nextInfo();
+  el.next.textContent  = KIND_NAME[nx.kind] + ' ×' + nx.n + (nx.boss ? ' + супровід' : '');
+  el.next.className    = 'v' + (nx.kind === 3 ? ' warn' : nx.kind === 2 ? ' calm' : '');
+  el.tick.textContent  = sim.tick;
+  el.hash.textContent  = sim.hash();
+  el.wave_.textContent = stalled ? 'Чекаю напарника…'
+    : sim.phase === 0 ? 'Хвиля ' + (sim.wave + 1) + ' за ' + Math.ceil(sim.prep / TPS) + ' с'
+    : 'Хвиля ' + sim.wave + ' іде';
+  el.wave_.disabled = sim.phase !== 0 || stalled;
+  if (net.live) {
+    el.netState.innerHTML = '<span class="dot"></span>Гравець ' + (net.me + 1) +
+      (net.rtt ? ' · ' + net.rtt + ' мс' : '');
+  }
+  refreshRail();
+}
+
+/* ── малювання ───────────────────────────────────────────────────────── */
+let TS = 32;
+function resize() {
+  const w = cv.parentElement.clientWidth;
+  TS = Math.max(14, (w / GW) | 0);
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  cv.style.width = '100%';
+  cv.width  = Math.round(GW * TS * dpr);
+  cv.height = Math.round(GH * TS * dpr);
+  cv.style.aspectRatio = GW + ' / ' + GH;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', resize);
+
+function render(alpha) {
+  const W = GW * TS, H = GH * TS;
+  ctx.fillStyle = C('--ink-2'); ctx.fillRect(0, 0, W, H);
+
+  // сітка
+  ctx.strokeStyle = C('--line-soft'); ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 1; x < GW; x++) { ctx.moveTo(x * TS + .5, 0); ctx.lineTo(x * TS + .5, H); }
+  for (let y = 1; y < GH; y++) { ctx.moveTo(0, y * TS + .5); ctx.lineTo(W, y * TS + .5); }
+  ctx.stroke();
+
+  // рельєф: дорога (лише у фіксованому режимі) і скелі
+  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+    const t = sim.terrain[idx(x, y)];
+    if (t === 2 && sim.mode === MODE_FIXED) {
+      ctx.fillStyle = 'rgba(87,160,190,.13)';
+      ctx.fillRect(x * TS, y * TS, TS, TS);
+    } else if (t === 1) {
+      ctx.fillStyle = '#0A0F13';
+      ctx.fillRect(x * TS, y * TS, TS, TS);
+      ctx.strokeStyle = 'rgba(126,146,157,.22)'; ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x * TS + TS * .22, y * TS + TS * .74);
+      ctx.lineTo(x * TS + TS * .5,  y * TS + TS * .28);
+      ctx.lineTo(x * TS + TS * .78, y * TS + TS * .74);
+      ctx.closePath(); ctx.stroke();
+    }
+  }
+
+  // маршрут
+  if (el.showPath.checked) drawPath();
+
+  // мітки
+  badge(sim.sx, sim.sy, C('--coral'), 'ВХІД');
+  badge(sim.gx, sim.gy, C('--moss'), 'ВИХІД');
+
+  // башти
+  for (const t of sim.towers) drawTower(t);
+
+  // підсвітка під курсором
+  if (hoverX >= 0) drawHover();
+
+  // крипи
+  for (const c of sim.creeps) drawCreep(c, alpha);
+
+  // набої
+  ctx.lineCap = 'round';
+  for (const s of sim.shots) {
+    const x = lerp(s.px, s.x, alpha) / SUB * TS, y = lerp(s.py, s.y, alpha) / SUB * TS;
+    ctx.fillStyle = C(TOOL_BY_KEY[s.k].swatch);
+    ctx.beginPath(); ctx.arc(x, y, Math.max(1.6, TS * .075), 0, 6.2832); ctx.fill();
+  }
+
+  // позначка паузи
+  if (sim.frozen) {
+    ctx.fillStyle = 'rgba(11,17,22,.55)'; ctx.fillRect(0, 0, W, 30);
+    ctx.fillStyle = C('--brass');
+    ctx.font = '600 ' + Math.round(TS * .5) + 'px ' + C('--display');
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('ПАУЗА · БУДУВАТИ МОЖНА', W / 2, 15);
+  }
+
+  // спалахи
+  for (const f of fx) {
+    const a = f.life / f.max, x = f.x / SUB * TS, y = f.y / SUB * TS;
+    ctx.globalAlpha = a;
+    if (f.t === 'ring') {
+      ctx.strokeStyle = f.c; ctx.lineWidth = 2;
+      const rr = f.r ? (f.r / SUB * TS) * (1 - a * .35) : TS * (1.5 - a);
+      ctx.beginPath(); ctx.arc(x, y, rr, 0, 6.2832); ctx.stroke();
+    } else {
+      ctx.fillStyle = f.c;
+      ctx.beginPath(); ctx.arc(x, y, TS * .16 * a + 1, 0, 6.2832); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+const lerp = (a, b, t) => a + (b - a) * t;
+
+function drawPath() {
+  let pts;
+  if (sim.mode === MODE_FIXED) {
+    // авторський маршрут як є — разом із самоперетинами
+    pts = sim.route.map(i => [i % GW, (i / GW) | 0]);
+  } else {
+    let x = sim.sx, y = sim.sy, guard = 0;
+    pts = [[x, y]];
+    while (!(x === sim.gx && y === sim.gy) && guard++ < GW * GH) {
+      const n = sim.stepTile(x, y, sim.flow);
+      if (n < 0) break;
+      x = n % GW; y = (n / GW) | 0;
+      pts.push([x, y]);
+    }
+  }
+  if (pts.length < 2) return;
+  ctx.strokeStyle = 'rgba(87,160,190,.34)';
+  ctx.lineWidth = Math.max(2, TS * .17);
+  ctx.lineJoin = ctx.lineCap = 'round';
+  ctx.beginPath();
+  pts.forEach(([px, py], i) => {
+    const cx = px * TS + TS / 2, cy = py * TS + TS / 2;
+    i ? ctx.lineTo(cx, cy) : ctx.moveTo(cx, cy);
+  });
+  ctx.stroke();
+}
+
+function badge(tx, ty, color, label) {
+  const x = tx * TS, y = ty * TS;
+  ctx.fillStyle = color; ctx.globalAlpha = .18; ctx.fillRect(x, y, TS, TS); ctx.globalAlpha = 1;
+  ctx.strokeStyle = color; ctx.lineWidth = 1.5; ctx.strokeRect(x + .75, y + .75, TS - 1.5, TS - 1.5);
+  if (TS >= 26) {
+    ctx.fillStyle = color;
+    ctx.font = '600 ' + Math.round(TS * .26) + 'px ' + C('--display');
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, x + TS / 2, y + TS / 2);
+  }
+}
+
+function drawTower(t) {
+  const tool = TOOL_BY_KEY[t.k], col = C(tool.swatch);
+  const x = t.x * TS, y = t.y * TS, p = TS * .1;
+  ctx.fillStyle = C('--panel-hi');
+  ctx.fillRect(x + p, y + p, TS - p * 2, TS - p * 2);
+  ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+  ctx.strokeRect(x + p + .75, y + p + .75, TS - p * 2 - 1.5, TS - p * 2 - 1.5);
+  if (t.freshSpent > 0) {                       // ще можна знести без втрат
+    ctx.save();
+    ctx.setLineDash([3, 3]); ctx.strokeStyle = C('--moss'); ctx.lineWidth = 1.5;
+    ctx.strokeRect(x + 2.25, y + 2.25, TS - 4.5, TS - 4.5);
+    ctx.restore();
+  }
+  if (sim.players.length > 1) {                 // чия це башта
+    ctx.fillStyle = t.owner === 0 ? C('--brass') : C('--steel');
+    ctx.beginPath();
+    ctx.moveTo(x + p, y + p); ctx.lineTo(x + p + TS * .2, y + p); ctx.lineTo(x + p, y + p + TS * .2);
+    ctx.closePath(); ctx.fill();
+  }
+  if (tool.cd === 0) {                          // бар'єр — штрихування
+    ctx.globalAlpha = .5; ctx.beginPath();
+    ctx.moveTo(x + p, y + TS - p); ctx.lineTo(x + TS - p, y + p); ctx.stroke();
+    ctx.globalAlpha = 1;
+    return;
+  }
+  if (t.lvl > 1) {                              // рівень — крапки під баштою
+    ctx.fillStyle = col;
+    for (let i = 0; i < t.lvl; i++)
+      ctx.fillRect(x + TS * .5 + (i - t.lvl / 2) * TS * .17, y + TS - p - TS * .1, TS * .11, TS * .07);
+  }
+  ctx.fillStyle = col;
+  const cx = x + TS / 2, cy = y + TS / 2;
+  ctx.beginPath(); ctx.arc(cx, cy, TS * .17, 0, 6.2832); ctx.fill();
+  const a = Math.atan2(t.ay || 0, t.ax || 1);   // ствол
+  ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.6, TS * .09);
+  ctx.beginPath(); ctx.moveTo(cx, cy);
+  ctx.lineTo(cx + Math.cos(a) * TS * .34, cy + Math.sin(a) * TS * .34); ctx.stroke();
+}
+
+function chip(x, y, txt, tone) {
+  if (TS < 16) return;
+  ctx.font = '600 ' + Math.round(TS * .32) + 'px ' + C('--mono');
+  ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+  const w = ctx.measureText(txt).width + 8, ty = y - 3;
+  ctx.fillStyle = 'rgba(11,17,22,.92)';
+  ctx.fillRect(x + TS / 2 - w / 2, ty - TS * .38, w, TS * .4);
+  ctx.fillStyle = C(tone);
+  ctx.fillText(txt, x + TS / 2, ty);
+}
+function ring(x, y, r) {
+  ctx.strokeStyle = 'rgba(200,214,222,.22)'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.arc(x + TS / 2, y + TS / 2, r / SUB * TS, 0, 6.2832); ctx.stroke();
+}
+
+function drawHover() {
+  const x = hoverX * TS, y = hoverY * TS;
+  if (typeof tool === 'string') {
+    const t = sim.towerAt(hoverX, hoverY);
+    const tint = tool === 'raze' ? '--coral' : tool === 'up' ? '--moss' : '--steel';
+    ctx.strokeStyle = t ? C(tint) : C('--text-faint');
+    ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, TS - 2, TS - 2);
+    if (t) {
+      if (tool === 'up' && t.st.cd) {
+        const c = sim.upgradeCost(t);
+        chip(x, y, c < 0 ? 'максимум' : '−' + c + ' → рів.' + (t.lvl + 1), c < 0 ? '--text-faint' : '--moss');
+        if (el.showRange.checked) ring(x, y, ((TOOL_BY_KEY[t.k].range * UPG[Math.min(MAX_LVL, t.lvl + 1)].range) / 100) | 0);
+      } else if (tool === 'aim' && t.st.cd) {
+        chip(x, y, 'ціль: ' + AIMS[t.aim], '--steel');
+        if (el.showRange.checked) ring(x, y, t.st.range);
+      } else if (tool === 'raze') {
+        const full = t.freshSpent >= t.spent;
+        chip(x, y, '+' + sim.refund(t) + (full ? ' (усе)' : ''), full ? '--moss' : '--brass');
+      }
+    }
+    return;
+  }
+  const ok = sim.buildable(hoverX, hoverY) && sim.players[meId()].gold >= tool.cost;
+  ctx.fillStyle = ok ? 'rgba(233,169,60,.16)' : 'rgba(224,87,74,.16)';
+  ctx.fillRect(x, y, TS, TS);
+  ctx.strokeStyle = ok ? C('--brass') : C('--coral');
+  ctx.lineWidth = 2; ctx.strokeRect(x + 1, y + 1, TS - 2, TS - 2);
+  if (el.showRange.checked && tool.range > 0) {
+    ctx.strokeStyle = 'rgba(200,214,222,.22)'; ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(x + TS / 2, y + TS / 2, tool.range / SUB * TS, 0, 6.2832); ctx.stroke();
+  }
+}
+
+const KIND_COLOR = ['--coral', '--brass', '--violet', '--coral'];
+function drawCreep(c, alpha) {
+  const x = lerp(c.px, c.x, alpha) / SUB * TS;
+  const y = lerp(c.py, c.y, alpha) / SUB * TS;
+  const big = c.kind === 3;
+  const r = TS * (big ? .34 : .2);
+  ctx.fillStyle = c.hurt > 0 ? '#FFFFFF' : (c.slowT > 0 ? C('--steel') : C(KIND_COLOR[c.kind]));
+  ctx.beginPath(); ctx.arc(x, y, r, 0, 6.2832); ctx.fill();
+  if (c.kind === 2) { ctx.strokeStyle = C('--text'); ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(x, y, r + 1.5, 0, 6.2832); ctx.stroke(); }
+  // смужка здоров'я
+  const w = TS * (big ? .8 : .56), h = Math.max(2, TS * .07);
+  const f = Math.max(0, Math.min(1, c.hp / c.maxHp));
+  ctx.fillStyle = 'rgba(0,0,0,.55)'; ctx.fillRect(x - w / 2, y - r - h - 3, w, h);
+  ctx.fillStyle = f > .5 ? C('--moss') : f > .22 ? C('--brass') : C('--coral');
+  ctx.fillRect(x - w / 2, y - r - h - 3, w * f, h);
+}
+
+/* ── старт ───────────────────────────────────────────────────────────── */
+resize();
+boot();
+window.CHOKEPOINT = {
+  get sim() { return sim; }, get ls() { return ls; }, get net() { return net; },
+  Sim, Lockstep, Net,
+};
+</script>
