@@ -936,6 +936,9 @@ class Sim {
   hash() {
     let h = 0x811c9dc5;
     const mix = v => { h ^= (v | 0); h = Math.imul(h, 0x01000193); };
+    // мапа й режим — теж у хеш: інакше розбіжність налаштувань лишалась би
+    // непоміченою, поки не з'являться перші крипи
+    mix(this.mapIdx); mix(this.mode); mix(this.diff); mix(this.cov);
     mix(this.tick); mix(this.lives); mix(this.wave); mix(this.rng);
     for (const p of this.players) mix(p.gold);
     for (const t of this.towers) { mix(t.x); mix(t.y); mix(t.cd); mix(t.lvl); mix(t.aim); mix(t.k.charCodeAt(0)); }
@@ -1108,16 +1111,18 @@ class Net {
   }
 }
 
-/* ===NET-CORE-END=== */
-
 /* Планувальник. Тік N виконується лише коли є команди ВІД УСІХ за цей
    тік. Свої команди публікуються на DELAY тіків уперед — цей запас і
    ховає затримку каналу. */
 const DELAY = 5;
 
 class Lockstep {
-  constructor(peers) {
+  /* gen — номер партії. Команди наступного покоління, що прилетіли до
+     нашого перезапуску, лежать у stash і забираються тут. Саме через їх
+     втрату сторони раніше вічно чекали одна одну. */
+  constructor(peers, gen, stash) {
     this.peers = peers;
+    this.gen = gen | 0;
     this.local = new Map();      // tick → мої команди
     this.remote = new Map();     // tick → чужі команди
     this.hist = [];              // повний лог для перевірки
@@ -1125,6 +1130,17 @@ class Lockstep {
     this.published = DELAY - 1;
     this.seq = 0;
     for (let t = 0; t < DELAY; t++) { this.local.set(t, []); this.remote.set(t, []); }
+    if (stash) {
+      for (let i = stash.length - 1; i >= 0; i--) {
+        if (stash[i].g === this.gen) { this.remote.set(stash[i].k, stash[i].m); stash.splice(i, 1); }
+        else if (stash[i].g < this.gen) stash.splice(i, 1);
+      }
+    }
+  }
+  /* Єдина точка прийому чужих команд. */
+  accept(g, tick, cmds, stash) {
+    if (g === this.gen) this.remote.set(tick, cmds);
+    else if (g > this.gen && stash) stash.push({ g, k:tick, m:cmds });
   }
   queue(cmd) { cmd.seq = this.seq++; this.pending.push(cmd); }
   publishTo(tick, send) {
@@ -1135,7 +1151,6 @@ class Lockstep {
       if (send) send(this.published, batch);
     }
   }
-  acceptRemote(tick, cmds) { this.remote.set(tick, cmds); }
   ready(tick, networked) { return !networked || this.remote.has(tick); }
   merged(tick) {
     const a = (this.local.get(tick) || []).concat(this.remote.get(tick) || []);
@@ -1145,6 +1160,8 @@ class Lockstep {
     return a.length ? a : null;
   }
 }
+
+/* ===NET-CORE-END=== */
 
 /* ══════════════════════════════════════════════════════════════════════
    ЧАСТИНА 3 · ЗВ'ЯЗКА, ВВІД, МАЛЮВАННЯ
@@ -1200,7 +1217,7 @@ function boot(g) {
   const n = net.solo ? 1 : 2;
   sim = new Sim(el.seed.value || 'MAZE-01', parseInt(el.diff.value, 10), n,
                 parseInt(el.mapSel.value, 10), parseInt(el.modeSel.value, 10));
-  ls  = new Lockstep(n);
+  ls  = new Lockstep(n, gen, stash);
   myHash.clear(); theirHash.clear();
   fx = []; paused = false; acc = 0; last = 0; stalled = false; desync = null;
   el.pause.textContent = 'Пауза';
@@ -1212,11 +1229,6 @@ function boot(g) {
     ? sim.map.note + ' · ' + sim.pathLength() + ' клітин'
     : 'лабіринт: трасу будуєш сам, скелі не забудовуються';
   el.sMate.hidden = n < 2;
-  // команди нової партії, що прилетіли раніше за нас
-  for (let i = stash.length - 1; i >= 0; i--) {
-    if (stash[i].g === gen) { ls.acceptRemote(stash[i].k, stash[i].m); stash.splice(i, 1); }
-    else if (stash[i].g < gen) stash.splice(i, 1);
-  }
   drawRail();
   if (!looping) { looping = true; requestAnimationFrame(frame); }
 }
@@ -1338,6 +1350,11 @@ function writeSetup(s) {
   el.seed.value = s.seed; el.diff.value = String(s.diff);
   el.mapSel.value = String(s.map | 0); el.modeSel.value = String(s.mode | 0);
 }
+/* Гість не крутить налаштування: інакше сторони розійшлись би мовчки. */
+function lockSetup(locked) {
+  for (const c of [el.seed, el.diff, el.mapSel, el.modeSel, document.getElementById('restart')])
+    c.disabled = locked;
+}
 function restart() {
   if (net.live && net.me !== 0) { say('Новий забіг починає господар', 'bad'); return; }
   if (net.live) {
@@ -1383,12 +1400,13 @@ el.verify.onclick = () => {
 };
 
 /* ── кооператив: обмін кодами ────────────────────────────────────────── */
-net.onCmds = (g, tick, cmds) => {
-  if (g === gen) ls.acceptRemote(tick, cmds);
-  else if (g > gen) stash.push({ g, k:tick, m:cmds });   // партія, до якої ми ще не дійшли
-};
+net.onCmds = (g, tick, cmds) => ls.accept(g, tick, cmds, stash);
 net.onHash = (g, tick, h) => { if (g === gen) { theirHash.set(tick, h); compareHash(tick); } };
-net.onRestart = (g, s) => { writeSetup(s); boot(g); };
+net.onRestart = (g, s) => {
+  writeSetup(s);
+  boot(g);
+  if (net.live && net.me !== 0) el.coopHint.textContent = 'З’єднано. Налаштування веде господар.';
+};
 net.onDiag = () => {
   el.coopDiag.textContent = net.diag();
   // Якщо зовнішніх адрес не знайшлося взагалі — попереджаємо одразу
@@ -1403,9 +1421,19 @@ net.onState   = s => {
     (s === 'live' ? ('Гравець ' + (net.me + 1)) : s === 'waiting' ? 'Чекаю' : s === 'dead' ? 'Розрив' : 'Соло');
   if (s === 'live') {
     paused = false; speed = 1; el.speed.textContent = '1×'; el.pause.textContent = 'Пауза';
-    el.code.value = ''; el.coopHint.textContent = 'З’єднано. Життя спільні, золото окреме.';
+    el.code.value = '';
     say('З’єднання встановлено', 'good');
-    boot(0);                      // обидві сторони стартують з тіку 0, покоління 0
+    lockSetup(net.me !== 0);      // налаштування веде господар
+    /* Партія в мережі — це покоління 1. Команди господаря, що прилетять
+       до перезапуску гостя, матимуть g=1 > його поточного 0, тож
+       відкладуться в чергу й застосуються після старту, а не згинуть. */
+    if (net.me === 0) {
+      net.send({ t:'r', g:1, s:readSetup() });
+      el.coopHint.textContent = 'З’єднано. Життя спільні, золото окреме.';
+      boot(1);
+    } else {
+      el.coopHint.textContent = 'З’єднано. Чекаю налаштування господаря…';
+    }
   } else if (s === 'dead') {
     el.coopHint.textContent = net.cand.relay === 0
       ? 'Не вдалось з’єднатись. Прямого маршруту немає, ретранслятор теж не дав адрес.'
