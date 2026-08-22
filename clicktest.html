@@ -36,6 +36,16 @@ window.addEventListener('load', async () => {
   for (const m of ['step','apply','hash','recomputeFlow','pickTarget','refund','upgradeCost','nextInfo'])
     check('є метод Sim.' + m, typeof w.CHOKEPOINT.Sim.prototype[m] === 'function');
 
+  /* 0б. Гість щойно приєднався: номер гравця вже 1, а симуляція ще
+         однокористувацька. Саме тут цикл падав на sim.players[1].gold. */
+  errs.length = 0;
+  n.me = 1; n.state = 'waiting';
+  await new Promise(r => setTimeout(r, 300));
+  const bad0 = (n.evt || []).filter(x => x.indexOf('ПОМИЛКА') >= 0);
+  check('цикл живий, поки гість без напарника', errs.length === 0 && bad0.length === 0, (errs.concat(bad0)).join(' | '));
+  check('гра не застигла', w.CHOKEPOINT.sim.tick > 0, 'тік ' + w.CHOKEPOINT.sim.tick);
+  n.me = 0; n.state = 'off';
+
   // 1. кожен інструмент арсеналу
   const tools = d.querySelectorAll('.tool');
   check('арсенал побудовано', tools.length >= 9, tools.length + ' кнопок');

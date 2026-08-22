@@ -1025,7 +1025,7 @@ const ICE = { iceServers: [
    що мовчав, хоча ICE був connected. */
 const CHAN = { ordered: true, negotiated: true, id: 0 };
 
-const BUILD = '2026-08-23n';
+const BUILD = '2026-08-23p';
 
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
@@ -1318,7 +1318,13 @@ const myHash = new Map(), theirHash = new Map();
 let gen = 0;
 const stash = [];
 
-const meId = () => (net.solo ? 0 : net.me);
+/* Між натисканням «Застосувати» і першим спільним стартом гість уже має
+   номер 1, а симуляція в нього ще однокористувацька — гравця з таким
+   номером там немає. Раніше це валило цикл назавжди. */
+const meId = () => {
+  const i = net.solo ? 0 : net.me;
+  return (sim && sim.players && i < sim.players.length) ? i : 0;
+};
 
 function boot(g) {
   if (g !== undefined) gen = g;
