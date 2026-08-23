@@ -62,6 +62,21 @@ window.addEventListener('load', async () => {
   const duelCb = d.getElementById('duelToggle');
   check('тумблер дуелі неактивний у соло (немає з ким)', duelCb.disabled === true || d.getElementById('duelField').className.indexOf('na') >= 0);
 
+  /* 0д. Панель гравців: нік, палітра кольорів, жива статистика. */
+  for (const id of ['myName','mySwatches','rosterBody'])
+    check('є елемент #' + id, !!d.getElementById(id));
+  const swatchBtns = d.querySelectorAll('#mySwatches button');
+  check('палітра кольорів побудована', swatchBtns.length >= 3, swatchBtns.length + ' кольорів');
+  check('у таблиці гравців є рядок у соло', d.getElementById('rosterBody').children.length >= 1);
+  errs.length = 0;
+  d.getElementById('myName').value = 'Тест<script>';
+  d.getElementById('myName').dispatchEvent(new w.Event('input'));
+  if (swatchBtns[1]) swatchBtns[1].click();
+  await new Promise(r => setTimeout(r, 150));
+  check('нік і колір змінюються без помилок', errs.length === 0, errs.join(' | '));
+  check('нік екранується в таблиці (без інʼєкції)', d.getElementById('rosterBody').innerHTML.indexOf('<script>') < 0);
+  check('обраний колір позначений aria-pressed', swatchBtns[1] && swatchBtns[1].getAttribute('aria-pressed') === 'true');
+
   /* 0б. Гість щойно приєднався: номер гравця вже 1, а симуляція ще
          однокористувацька. Саме тут цикл падав на sim.players[1].gold. */
   errs.length = 0;

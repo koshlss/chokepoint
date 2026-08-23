@@ -205,6 +205,23 @@ details.adv .body{padding-top:8px; display:flex; flex-direction:column; gap:7px}
 .mateBoard canvas{display:block; width:100%; height:auto; opacity:.92}
 .mateBoard.over canvas{filter:grayscale(.6) brightness(.55)}
 .mateBoard .dead{font-family:var(--display); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--coral)}
+
+/* ─── гравці: нік, колір, жива статистика ─── */
+.identRow{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+.identRow input[type=text]{flex:1; min-width:110px; width:auto}
+.swatches{display:flex; gap:5px}
+.swatches button{width:20px; height:20px; padding:0; border-radius:50%; border:2px solid transparent;
+  background:var(--sw); cursor:pointer; min-width:0}
+.swatches button[aria-pressed=true]{border-color:var(--text)}
+table.roster{width:100%; border-collapse:collapse; font-size:12.5px}
+table.roster th{font-family:var(--display); font-size:9.5px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--text-faint); text-align:right; font-weight:600; padding:4px 6px}
+table.roster th:nth-child(-n+2){text-align:left}
+table.roster td{padding:5px 6px; border-top:1px solid var(--line-soft); text-align:right;
+  font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--text-dim)}
+table.roster td:nth-child(2){text-align:left; font-family:var(--body); color:var(--text); font-weight:600}
+table.roster .dot{display:inline-block; width:9px; height:9px; border-radius:50%}
+table.roster tr:first-child td{color:var(--text)}
 </style>
 
 <div class="wrap">
@@ -315,6 +332,16 @@ details.adv .body{padding-top:8px; display:flex; flex-direction:column; gap:7px}
             </div>
           </details>
         </div>
+
+        <h2>Гравці</h2>
+        <div class="identRow">
+          <input type="text" id="myName" maxlength="18" spellcheck="false" placeholder="Твій нік">
+          <span class="swatches" id="mySwatches"></span>
+        </div>
+        <table class="roster">
+          <thead><tr><th></th><th>Гравець</th><th>Вбито</th><th>Шкода</th><th>Золото</th><th>HP</th><th>Веж</th></tr></thead>
+          <tbody id="rosterBody"></tbody>
+        </table>
 
         <details class="adv">
           <summary>Дані партії (для аналізу)</summary>
@@ -557,7 +584,7 @@ class Sim {
     this.frozen  = false;   // пауза живе всередині симуляції, тому будувати можна
 
     this.players = [];
-    for (let i = 0; i < this.nPlayers; i++) this.players.push({ id:i, gold:BALANCE.startGold });
+    for (let i = 0; i < this.nPlayers; i++) this.players.push({ id:i, gold:BALANCE.startGold, dmg:0, kills:0 });
 
     this.blocked = new Uint8Array(GW * GH);
     this.flow    = new Int32Array(GW * GH);
@@ -938,7 +965,8 @@ class Sim {
   kill(c, owner) {
     let g = c.gold;
     if (this.randMod(100) < BALANCE.bountyPct) { g *= 2; this.events.push({ e:'bounty', x:c.x, y:c.y, gold:g }); }
-    this.players[owner >= 0 ? owner : 0].gold += g;
+    const pl = this.players[owner >= 0 ? owner : 0];
+    pl.gold += g; pl.kills++;
     this.events.push({ e:'kill', p:owner, x:c.x, y:c.y, gold:g });
   }
 
@@ -1001,6 +1029,8 @@ class Sim {
     if (d < 1) d = 1;
     c.hp -= d;
     c.hurt = 3;
+    const pl = this.players[owner >= 0 ? owner : 0];
+    if (pl) pl.dmg += d;   // для панелі гравців — реально завдана шкода, після броні
     if (c.hp <= 0) {
       const n = this.creeps.indexOf(c);
       if (n >= 0) this.creeps.splice(n, 1);
@@ -1035,7 +1065,7 @@ class Sim {
     // непоміченою, поки не з'являться перші крипи
     mix(this.mapIdx); mix(this.mode); mix(this.diff); mix(this.cov);
     mix(this.tick); mix(this.lives); mix(this.wave); mix(this.rng); mix(this.waveVotes.size);
-    for (const p of this.players) mix(p.gold);
+    for (const p of this.players) { mix(p.gold); mix(p.dmg); mix(p.kills); }
     for (const t of this.towers) { mix(t.x); mix(t.y); mix(t.cd); mix(t.lvl); mix(t.aim); mix(t.k.charCodeAt(0)); }
     for (const c of this.creeps) { mix(c.id); mix(c.x); mix(c.y); mix(c.hp); mix(c.slowT); }
     for (const s of this.shots)  { mix(s.x); mix(s.y); mix(s.tid); }
@@ -1119,7 +1149,7 @@ const ICE = { iceServers: [
    що мовчав, хоча ICE був connected. */
 const CHAN = { ordered: true, negotiated: true, id: 0 };
 
-const BUILD = '2026-08-24b';
+const BUILD = '2026-08-24c';
 
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
@@ -1140,7 +1170,7 @@ class Net {
     this.peerId = null;
     this.iceErr = 0;
     this.onCmds = null; this.onHash = null; this.onRestart = null; this.onState = null;
-    this.onDiag = null; this.onCfg = null; this.onReady = null; this.onSpeed = null;
+    this.onDiag = null; this.onCfg = null; this.onReady = null; this.onSpeed = null; this.onIdent = null;
   }
   diag() {
     if (!this.pc) return 'з’єднання не почато';
@@ -1245,6 +1275,7 @@ class Net {
       else if (m.t === 'cfg' && this.onCfg) this.onCfg(m.s, m.seq);
       else if (m.t === 'ready' && this.onReady) this.onReady(m.seq);
       else if (m.t === 'speed' && this.onSpeed) this.onSpeed(m.v);
+      else if (m.t === 'ident' && this.onIdent) this.onIdent(m.name, m.color);
       else if (m.t === 'hi') {
         this.peerBuild = m.b || '?'; this.peerId = m.w || null;
         this.send({ t:'hi2', b: BUILD, w: this.myId });
@@ -1343,7 +1374,7 @@ class PeerNet {
     this.evt = []; this.t0 = performance.now();
     this.peer = null; this.conn = null; this.roomCode = null; this.hiTimer = 0;
     this.onCmds = null; this.onHash = null; this.onRestart = null;
-    this.onState = null; this.onDiag = null; this.onCfg = null; this.onReady = null; this.onSpeed = null;
+    this.onState = null; this.onDiag = null; this.onCfg = null; this.onReady = null; this.onSpeed = null; this.onIdent = null;
   }
   get live() { return this.state === 'live'; }
   get solo() { return this.state === 'off'; }
@@ -1389,6 +1420,8 @@ class PeerNet {
     else if (m.t === 'r' && this.onRestart) this.onRestart(m.g, m.s);
     else if (m.t === 'cfg' && this.onCfg) this.onCfg(m.s, m.seq);
     else if (m.t === 'ready' && this.onReady) this.onReady(m.seq);
+    else if (m.t === 'speed' && this.onSpeed) this.onSpeed(m.v);
+    else if (m.t === 'ident' && this.onIdent) this.onIdent(m.name, m.color);
     else if (m.t === 'hi') {
       this.peerBuild = m.b || '?'; this.peerId = m.w || null;
       this.send({ t:'hi2', b: BUILD, w: this.myId });
@@ -1561,6 +1594,8 @@ const el = {
   duelField: document.getElementById('duelField'), duel: document.getElementById('duelToggle'),
   mateBoard: document.getElementById('mateBoard'),
   mbWave: document.getElementById('mbWave'), mbLives: document.getElementById('mbLives'), mbGold: document.getElementById('mbGold'),
+  myName: document.getElementById('myName'), mySwatches: document.getElementById('mySwatches'),
+  rosterBody: document.getElementById('rosterBody'),
 };
 
 MAPS.forEach((m, i) => {
@@ -1598,6 +1633,45 @@ let guestReadySeq = -1;   // на яку версію налаштувань г�
               коопі (спільна дошка на двох), завжди 0 у дуелі (моя дошка
               сольна) чи в соло. Саме meId() читає sim.players[...] і
               звіряється з подіями Sim. */
+/* ── гравці: нік і колір — суто косметика, поза Sim, не деталермінована.
+   Кожен обирає СВОЄ незалежно, розсилає легким повідомленням; конфлікт
+   кольорів (обидва обрали те саме) нікому не заважає — це не гра. */
+const PALETTE = [
+  { key:'brass',  css:'--brass'  }, { key:'steel',  css:'--steel'  },
+  { key:'moss',   css:'--moss'   }, { key:'coral',  css:'--coral'  },
+  { key:'violet', css:'--violet' },
+];
+function paletteCss(key) { const p = PALETTE.find(x => x.key === key); return p ? p.css : '--brass'; }
+let myIdent   = { name: localStorage.getItem('cp_name') || '', color: localStorage.getItem('cp_color') || 'brass' };
+let mateIdent = { name: '', color: 'steel' };
+function identFor(p) { return (net.solo || p === netP()) ? myIdent : mateIdent; }
+function identName(p) {
+  const id = identFor(p);
+  if (id.name) return id.name;
+  return net.solo ? 'Ти' : (p === netP() ? 'Ти' : 'Напарник');
+}
+function sendIdent() { if (net.live) net.send({ t:'ident', name: myIdent.name, color: myIdent.color }); }
+
+el.myName.value = myIdent.name;
+el.myName.oninput = () => {
+  myIdent.name = el.myName.value.trim().slice(0, 18);
+  localStorage.setItem('cp_name', myIdent.name);
+  sendIdent(); renderRoster();
+};
+PALETTE.forEach(sw => {
+  const b = document.createElement('button');
+  b.style.setProperty('--sw', C(sw.css));
+  b.title = sw.key;
+  b.setAttribute('aria-pressed', String(sw.key === myIdent.color));
+  b.onclick = () => {
+    myIdent.color = sw.key;
+    localStorage.setItem('cp_color', sw.key);
+    el.mySwatches.querySelectorAll('button').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+    sendIdent(); renderRoster();
+  };
+  el.mySwatches.appendChild(b);
+});
+
 let duelBoards = false;
 const netP = () => (net.solo ? 0 : net.me);
 const meId = () => {
@@ -1955,6 +2029,10 @@ net.onReady = seq => {
   if (seq === lobbyCfgSeq) { guestReadySeq = seq; renderLobby(); }
 };
 net.onSpeed = v => setSpeed(v / 10, false);   // прийняв від хоста — не відсилаю назад
+net.onIdent = (name, color) => {
+  mateIdent = { name: (name || '').slice(0, 18), color: color || 'steel' };
+  renderRoster(); renderLobby();
+};
 net.onRestart = (g, s) => {
   writeSetup(s);
   inLobby = false;
@@ -1988,6 +2066,8 @@ net.onState   = s => {
     el.code.value = ''; el.roomLink.hidden = true;
     say('З’єднання встановлено', 'good');
     inLobby = true; guestReadySeq = -1; guestReadyLocal = false;
+    mateIdent = { name:'', color: net.me === 0 ? 'steel' : 'brass' };  // тимчасово, поки напарник не назветься
+    sendIdent();
     refreshHostLocks();
     /* Партія в мережі — це покоління 1. Команди господаря, що прилетять
        до перезапуску гостя, матимуть g=1 > його поточного 0, тож
@@ -2020,7 +2100,7 @@ net.onState   = s => {
 function attachNet(n) {
   n.onCmds = net.onCmds; n.onHash = net.onHash; n.onRestart = net.onRestart;
   n.onState = net.onState; n.onDiag = net.onDiag; n.onCfg = net.onCfg; n.onReady = net.onReady;
-  n.onSpeed = net.onSpeed;
+  n.onSpeed = net.onSpeed; n.onIdent = net.onIdent;
   net.reset();
   net = n;
 }
@@ -2352,7 +2432,43 @@ function discordPayload(e) {
   }] };
 }
 
+function escapeHtml(s) { return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+/* Рядки панелі гравців: у класичному коопі HP спільне (та сама дошка на
+   двох), у дуелі й соло — своє. Сортування за вбивствами — вже готовий
+   порядок рядків, без окремого UI для сортування. */
+function rosterRows() {
+  if (net.solo) {
+    const p = sim.players[0];
+    return [{ p:0, kills:p.kills, dmg:p.dmg, gold:p.gold, hp:sim.lives, towers:sim.towers.length }];
+  }
+  if (duelBoards) {
+    const meP = sim.players[0];
+    const rows = [{ p:netP(), kills:meP.kills, dmg:meP.dmg, gold:meP.gold, hp:sim.lives, towers:sim.towers.length }];
+    if (simMate) {
+      const mp = simMate.players[0];
+      rows.push({ p:1 - netP(), kills:mp.kills, dmg:mp.dmg, gold:mp.gold, hp:simMate.lives, towers:simMate.towers.length });
+    }
+    return rows.sort((a, b) => b.kills - a.kills);
+  }
+  return sim.players.map((pl, i) => ({
+    p:i, kills:pl.kills, dmg:pl.dmg, gold:pl.gold, hp:sim.lives,
+    towers:sim.towers.filter(t => t.owner === i).length,
+  })).sort((a, b) => b.kills - a.kills);
+}
+function renderRoster() {
+  if (!sim) return;
+  el.rosterBody.innerHTML = rosterRows().map(r => {
+    const id = identFor(r.p);
+    return '<tr><td><span class="dot" style="background:' + C(paletteCss(id.color)) + '"></span></td>' +
+      '<td>' + escapeHtml(identName(r.p)) + '</td>' +
+      '<td>' + r.kills + '</td><td>' + r.dmg + '</td><td>' + r.gold + '</td>' +
+      '<td>' + r.hp + '</td><td>' + r.towers + '</td></tr>';
+  }).join('');
+}
+
 function hud() {
+  renderRoster();
   const me = meId();
   el.wave.textContent  = sim.wave;
   el.lives.textContent = sim.lives;
@@ -2582,7 +2698,7 @@ function drawTower(t) {
     ctx.restore();
   }
   if (sim.players.length > 1) {                 // чия це башта
-    ctx.fillStyle = t.owner === 0 ? C('--brass') : C('--steel');
+    ctx.fillStyle = C(paletteCss(identFor(t.owner).color));
     ctx.beginPath();
     ctx.moveTo(x + p, y + p); ctx.lineTo(x + p + TS * .2, y + p); ctx.lineTo(x + p, y + p + TS * .2);
     ctx.closePath(); ctx.fill();
