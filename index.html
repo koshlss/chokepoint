@@ -1149,7 +1149,7 @@ const ICE = { iceServers: [
    що мовчав, хоча ICE був connected. */
 const CHAN = { ordered: true, negotiated: true, id: 0 };
 
-const BUILD = '2026-08-24c';
+const BUILD = '2026-08-24d';
 
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
@@ -2309,6 +2309,12 @@ function frameBody(now) {
 function compareHash(t) {
   const a = duelBoards ? myMateHash.get(t) : myHash.get(t);
   const b = theirHash.get(t);
+  // Обидва боки шлють хеш асинхронно — цю функцію викликають і одразу
+  // після підрахунку свого (поки чужий ще в дорозі), і по приходу чужого.
+  // Без цієї відсічки перший виклик завжди бачив би b===undefined і
+  // трактував це як розсинхрон.
+  if (a === undefined || b === undefined || a === b) return;
+  desync = t;
   say('ДЕСИНК на тіку ' + t + ': ' + a + ' ≠ ' + b, 'bad');
   el.veil.hidden = false;
   el.veil.className = 'veil lost';
