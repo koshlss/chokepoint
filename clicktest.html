@@ -36,6 +36,24 @@ window.addEventListener('load', async () => {
   for (const m of ['step','apply','hash','recomputeFlow','pickTarget','refund','upgradeCost','nextInfo'])
     check('є метод Sim.' + m, typeof w.CHOKEPOINT.Sim.prototype[m] === 'function');
 
+  /* 0в. PeerNet (лобі через посилання) — той самий інтерфейс, що й Net,
+        інакше attachNet() тихо зламається на другому транспорті. */
+  const PN = w.CHOKEPOINT.PeerNet;
+  check('клас PeerNet експортований', typeof PN === 'function');
+  if (PN) {
+    const pn = new PN();
+    check('PeerNet.live визначений', typeof pn.live === 'boolean');
+    check('PeerNet.solo визначений', typeof pn.solo === 'boolean');
+    for (const m of ['createRoom','joinRoom','bindConn','reset','send','diag','setState','goLive','dispatch'])
+      check('є метод PeerNet.' + m, typeof pn[m] === 'function');
+  }
+
+  /* 0г. Нові елементи лобі мусять існувати в розмітці. */
+  for (const id of ['btnLobbyHost','roomLink','roomLinkText','btnLobbyCopy',
+                     'webhookUrl','btnWebhookTest','webhookHint','btnDownloadLog',
+                     'veilBtn2','veilReady'])
+    check('є елемент #' + id, !!d.getElementById(id));
+
   /* 0б. Гість щойно приєднався: номер гравця вже 1, а симуляція ще
          однокористувацька. Саме тут цикл падав на sim.players[1].gold. */
   errs.length = 0;
@@ -71,6 +89,23 @@ window.addEventListener('load', async () => {
   d.getElementById('btnUse').click();
   await new Promise(r => setTimeout(r, 300));
   check('сміття в полі коду оброблено чемно', errs.length === 0, errs.join(' | '));
+
+  // 5. соло: зміна мапи в шапці одразу перезапускає партію новою мапою
+  errs.length = 0;
+  const before = w.CHOKEPOINT.sim.mapIdx;
+  const sel = d.getElementById('mapSel');
+  sel.value = String((before + 1) % sel.options.length);
+  sel.dispatchEvent(new w.Event('change'));
+  await new Promise(r => setTimeout(r, 200));
+  check('зміна мапи в соло стартує нову партію', errs.length === 0 && w.CHOKEPOINT.sim.mapIdx !== before,
+        'було ' + before + ', стало ' + w.CHOKEPOINT.sim.mapIdx);
+
+  // 6. кнопки журналу партій безпечні без налаштованого вебхука/історії
+  errs.length = 0;
+  d.getElementById('btnWebhookTest').click();
+  d.getElementById('btnDownloadLog').click();
+  await new Promise(r => setTimeout(r, 200));
+  check('кнопки журналу партій не падають без даних', errs.length === 0, errs.join(' | '));
 
   say('');
   say(bad ? '══ ЗБОЇВ: ' + bad + ' ══' : '══ УСЕ ЧИСТО ══');

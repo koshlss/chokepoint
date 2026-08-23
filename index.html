@@ -1,5 +1,8 @@
 <title>Chokepoint</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Лише для знайомства двох гравців (обмін SDP через хмарний брокер);
+     сама гра після цього йде напряму P2P, повз цей сервер. -->
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <style>
 /* ─── Chokepoint · токени ────────────────────────────────────────────────
    Свідомо однотемна річ: це ігровий прилад, темний планшет-планувальник.
@@ -171,6 +174,24 @@ canvas{display:block; width:100%; height:auto; touch-action:none; cursor:crossha
 .veil p{margin:0; color:var(--text-dim); font-family:var(--mono); font-size:13px}
 .veil.lost h2{color:var(--coral)}
 .veil.verify h2{color:var(--steel); font-size:22px}
+.veil.lobby h2{color:var(--brass); font-size:24px}
+.veil .row{display:flex; gap:10px; flex-wrap:wrap; justify-content:center}
+.veil .row button{min-width:150px}
+.readyDot{display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:12.5px}
+.readyDot b{width:8px; height:8px; border-radius:50%; background:var(--text-faint); display:inline-block}
+.readyDot.on b{background:var(--moss)}
+.roomLink{display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:center;
+  background:var(--ink-2); border:1px solid var(--line); border-radius:var(--r); padding:8px 10px;
+  font-family:var(--mono); font-size:12px; color:var(--steel); word-break:break-all; max-width:100%}
+
+/* ─── розширені налаштування: ручні коди, журнал ─── */
+details.adv{border-top:1px solid var(--line-soft); padding-top:8px; margin-top:2px}
+details.adv > summary{cursor:pointer; font-family:var(--display); font-size:11px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--text-faint); user-select:none}
+details.adv > summary:hover{color:var(--text-dim)}
+details.adv .body{padding-top:8px; display:flex; flex-direction:column; gap:7px}
+.webhookRow{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
+.webhookRow input[type=text]{flex:1; min-width:160px; width:auto}
 </style>
 
 <div class="wrap">
@@ -218,7 +239,15 @@ canvas{display:block; width:100%; height:auto; touch-action:none; cursor:crossha
     <div>
       <div class="board">
         <canvas id="cv"></canvas>
-        <div class="veil" id="veil" hidden><h2 id="veilTitle"></h2><p id="veilText"></p><button id="veilBtn" class="primary">Новий забіг</button></div>
+        <div class="veil" id="veil" hidden>
+          <h2 id="veilTitle"></h2>
+          <p id="veilText"></p>
+          <p class="readyDot" id="veilReady" hidden><b></b><span></span></p>
+          <div class="row">
+            <button id="veilBtn" class="primary">Новий забіг</button>
+            <button id="veilBtn2" hidden>Нова гра</button>
+          </div>
+        </div>
         <div class="boardbar">
           <button id="btnWave" class="primary">Викликати хвилю</button>
           <button id="btnPause">Пауза</button>
@@ -234,18 +263,44 @@ canvas{display:block; width:100%; height:auto; touch-action:none; cursor:crossha
         <h2>Кооператив</h2>
         <div class="coop">
           <div class="coopRow">
-            <button id="btnHost">Створити гру</button>
-            <button id="btnUse">Застосувати код</button>
+            <button id="btnLobbyHost" class="primary">Створити лобі</button>
             <span class="netState" id="netState"><span class="dot"></span>Соло</span>
           </div>
-          <textarea id="codeBox" spellcheck="false" placeholder="Господар: натисни «Створити гру» і надішли код другу.&#10;Гість: встав сюди код друга і натисни «Застосувати код»."></textarea>
-          <div class="coopRow">
-            <button id="btnCopy">Копіювати код</button>
-            <span class="hint" id="coopHint">Обмін кодами — через будь-який чат.</span>
+          <div class="roomLink" id="roomLink" hidden>
+            <span id="roomLinkText"></span>
+            <button id="btnLobbyCopy">Копіювати</button>
           </div>
+          <span class="hint" id="coopHint">Один тисне «Створити лобі» й кидає посилання другу — той відкриє його й приєднається сам.</span>
           <div class="hint diag" id="coopDiag"></div>
+
+          <details class="adv">
+            <summary>Ручний спосіб (якщо лобі не з'єднується)</summary>
+            <div class="body">
+              <div class="coopRow">
+                <button id="btnHost">Створити гру</button>
+                <button id="btnUse">Застосувати код</button>
+              </div>
+              <textarea id="codeBox" spellcheck="false" placeholder="Господар: натисни «Створити гру» і надішли код другу.&#10;Гість: встав сюди код друга і натисни «Застосувати код»."></textarea>
+              <div class="coopRow">
+                <button id="btnCopy">Копіювати код</button>
+              </div>
+            </div>
+          </details>
         </div>
-        <h2>Журнал</h2>
+
+        <details class="adv">
+          <summary>Дані партії (для аналізу)</summary>
+          <div class="body">
+            <div class="webhookRow">
+              <input type="text" id="webhookUrl" placeholder="URL вебхука Discord (необов'язково)">
+              <button id="btnWebhookTest">Перевірити</button>
+            </div>
+            <span class="hint" id="webhookHint">Зберігається лише в цьому браузері, у публічний код не потрапляє.</span>
+            <button id="btnDownloadLog">Завантажити журнал (JSON)</button>
+          </div>
+        </details>
+
+        <h2>Журнал гри</h2>
         <div class="log" id="log"></div>
       </div>
     </div>
@@ -272,9 +327,10 @@ canvas{display:block; width:100%; height:auto; touch-action:none; cursor:crossha
     </div>
     <div>
       <h3>Кооператив удвох</h3>
-      <p><b>Потрібен локальний файл.</b> На цій опублікованій сторінці кооп не запрацює: пісочниця блокує WebRTC. Візьміть <code>index.html</code>, і хай кожен відкриє його в себе — це один самодостатній файл, ставити нічого не треба.</p>
-      <p><b>Господар</b> тисне «Створити гру», копіює код і кидає другу в чат. <b>Гість</b> вставляє код, тисне «Застосувати», отримує код-відповідь і шле назад. Господар вставляє відповідь — і гра починається.</p>
-      <p>З'єднання пряме, без сервера. Життя спільні, золото в кожного своє. Паузи й прискорення в кооперативі немає.</p>
+      <p><b>Господар</b> тисне «Створити лобі» й кидає посилання другу. <b>Гість</b> відкриває його — приєднання автоматичне, кодами обмінюватись не треба.</p>
+      <p>Далі — лобі: господар обирає мапу, режим, сід і складність, гість тисне «Готовий». Будь-яка зміна налаштувань господарем знімає готовність гостя. Запустити партію можна лише коли гість готовий.</p>
+      <p>З'єднання пряме, P2P: сторонній сервер лише знайомить вас на самому початку, гра через нього не йде. Життя спільні, золото в кожного своє. Паузу й перезапуск веде господар; гість керує лише своїми баштами.</p>
+      <p>Не з'єдналось? Розгорни «Ручний спосіб» — той самий обмін кодами, що й раніше, працює завжди, коли працює WebRTC.</p>
     </div>
     <div>
       <h3>Чому детермінізм</h3>
@@ -656,7 +712,7 @@ class Sim {
                    lvl:1, spent:tool.cost, freshSpent:tool.cost, aim:0 };
       this.recalcTower(nt);
       this.towers.push(nt);
-      this.events.push({ e:'build', x:cmd.x, y:cmd.y });
+      this.events.push({ e:'build', p:cmd.p, x:cmd.x, y:cmd.y, k:tool.key, cost:tool.cost });
       this.retargetAll();
 
     } else if (cmd.t === 'raze') {
@@ -845,7 +901,7 @@ class Sim {
     let g = c.gold;
     if (this.randMod(100) < BALANCE.bountyPct) { g *= 2; this.events.push({ e:'bounty', x:c.x, y:c.y, gold:g }); }
     this.players[owner >= 0 ? owner : 0].gold += g;
-    this.events.push({ e:'kill', x:c.x, y:c.y });
+    this.events.push({ e:'kill', p:owner, x:c.x, y:c.y, gold:g });
   }
 
   /* Ціль — той крип, що найближче до виходу. Дистанція береться з
@@ -1046,7 +1102,7 @@ class Net {
     this.peerId = null;
     this.iceErr = 0;
     this.onCmds = null; this.onHash = null; this.onRestart = null; this.onState = null;
-    this.onDiag = null;
+    this.onDiag = null; this.onCfg = null; this.onReady = null;
   }
   diag() {
     if (!this.pc) return 'з’єднання не почато';
@@ -1148,6 +1204,8 @@ class Net {
       if (m.t === 'c') { this.rxCmd++; if (this.onCmds) this.onCmds(m.g, m.k, m.m); }
       else if (m.t === 'h' && this.onHash) this.onHash(m.g, m.k, m.h);
       else if (m.t === 'r' && this.onRestart) this.onRestart(m.g, m.s);
+      else if (m.t === 'cfg' && this.onCfg) this.onCfg(m.s, m.seq);
+      else if (m.t === 'ready' && this.onReady) this.onReady(m.seq);
       else if (m.t === 'hi') {
         this.peerBuild = m.b || '?'; this.peerId = m.w || null;
         this.send({ t:'hi2', b: BUILD, w: this.myId });
@@ -1219,6 +1277,160 @@ class Net {
   }
 }
 
+/* ── Лобі через PeerJS: короткий код замість ручного обміну кодами ──────
+   PeerJS сам домовляється про з'єднання через свій хмарний брокер — той
+   бачить лише метадані рукостискання (хто з ким хоче з'єднатись), гра
+   після цього йде так само напряму P2P, повз цей сервер. Room-код — це
+   ID пірингу з коротким неймспейсом, щоб не перетнутись з чужими
+   застосунками на тому самому публічному брокері.
+
+   Клас незалежний від Net (ручний обмін): якщо PeerJS чи публічний
+   брокер колись підведе, ручний спосіб лишається робочим запасним
+   варіантом — саме тому це окремий клас, а не заміна. */
+const ROOM_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';   // без 0/O/1/I/L
+const ROOM_PREFIX = 'chokepoint-';
+function randRoomCode(n) {
+  let s = '';
+  for (let i = 0; i < n; i++) s += ROOM_ALPHABET[Math.floor(Math.random() * ROOM_ALPHABET.length)];
+  return s;
+}
+
+class PeerNet {
+  constructor() {
+    this.state = 'off'; this.me = 0; this.rtt = 0;
+    this.txCmd = 0; this.rxCmd = 0; this.rxAny = 0;
+    this.myId = Math.floor(Math.random() * 900000) + 100000;
+    this.peerId = null; this.peerBuild = null;
+    this.evt = []; this.t0 = performance.now();
+    this.peer = null; this.conn = null; this.roomCode = null; this.hiTimer = 0;
+    this.onCmds = null; this.onHash = null; this.onRestart = null;
+    this.onState = null; this.onDiag = null; this.onCfg = null; this.onReady = null;
+  }
+  get live() { return this.state === 'live'; }
+  get solo() { return this.state === 'off'; }
+  note(s) {
+    const t = ((performance.now() - this.t0) / 1000).toFixed(1);
+    this.evt.push(t + 's ' + s);
+    if (this.evt.length > 22) this.evt.shift();
+    if (this.onDiag) this.onDiag();
+  }
+  setState(s) {
+    this.note('стан → ' + s);
+    this.state = s;
+    if (this.onState) this.onState(s);
+  }
+  diag() {
+    const broker = !this.peer ? '—'
+      : this.peer.destroyed ? 'знищено'
+      : this.peer.disconnected ? 'відʼєднано від брокера'
+      : this.peer.open ? 'на зв’язку' : 'з’єдную з брокером';
+    const pcState = this.conn && this.conn.peerConnection ? this.conn.peerConnection.connectionState : null;
+    const ch = !this.conn ? 'канал не створено' : this.conn.open ? 'канал: open' : 'канал: ' + (pcState || 'зв’язуюсь');
+    return 'вікно №' + this.myId + (this.peerId ? ', з’єднано з №' + this.peerId : ', ні з ким') +
+           ' · кімната ' + (this.roomCode || '—') + ' · брокер: ' + broker + ' · ' + ch +
+           ' · стан: ' + this.state +
+           (this.peerBuild ? ' · збірка напарника: ' + this.peerBuild : '');
+  }
+  reset() {
+    if (this.hiTimer) { clearTimeout(this.hiTimer); this.hiTimer = 0; }
+    if (this.conn) { try { this.conn.close(); } catch (e) {} }
+    if (this.peer) { try { this.peer.destroy(); } catch (e) {} }
+    this.peer = null; this.conn = null; this.peerId = null; this.peerBuild = null;
+    this.txCmd = 0; this.rxCmd = 0; this.rxAny = 0; this.rtt = 0;
+    this.state = 'off';
+  }
+  send(o) {
+    if (!this.conn || !this.conn.open) return;
+    if (o.t === 'c') this.txCmd++;
+    try { this.conn.send(o); } catch (e) {}
+  }
+  dispatch(m) {
+    if (m.t === 'c') { this.rxCmd++; if (this.onCmds) this.onCmds(m.g, m.k, m.m); }
+    else if (m.t === 'h' && this.onHash) this.onHash(m.g, m.k, m.h);
+    else if (m.t === 'r' && this.onRestart) this.onRestart(m.g, m.s);
+    else if (m.t === 'cfg' && this.onCfg) this.onCfg(m.s, m.seq);
+    else if (m.t === 'ready' && this.onReady) this.onReady(m.seq);
+    else if (m.t === 'hi') {
+      this.peerBuild = m.b || '?'; this.peerId = m.w || null;
+      this.send({ t:'hi2', b: BUILD, w: this.myId });
+      this.goLive();
+    }
+    else if (m.t === 'hi2') { this.peerBuild = m.b || '?'; this.peerId = m.w || null; this.goLive(); }
+    else if (m.t === 'ping') this.send({ t:'pong', at:m.at });
+    else if (m.t === 'pong') this.rtt = Math.round(performance.now() - m.at);
+  }
+  goLive() {
+    if (this.state === 'live') return;
+    if (this.hiTimer) { clearTimeout(this.hiTimer); this.hiTimer = 0; }
+    this.setState('live');
+    this.ping();
+  }
+  ping() {
+    if (!this.live) return;
+    this.send({ t:'ping', at: performance.now() });
+    setTimeout(() => this.ping(), 2000);
+  }
+  bindConn(conn) {
+    if (this.conn) { try { conn.close(); } catch (e) {} return; }   // одне з'єднання за раз
+    this.conn = conn;
+    this.note('з’єднання отримано');
+    if (this.onDiag) this.onDiag();
+    conn.on('open', () => {
+      this.note('канал ВІДКРИВСЯ, шлю привітання');
+      this.send({ t:'hi', b: BUILD, w: this.myId });
+      this.hiTimer = setTimeout(() => { if (this.state !== 'live') this.setState('stale'); }, 8000);
+    });
+    conn.on('data', m => {
+      this.rxAny++;
+      if (m && m.t !== 'ping' && m.t !== 'pong' && m.t !== 'c') this.note('прийшло: ' + m.t);
+      try { this.dispatch(m); } catch (e) { this.note('ПОМИЛКА на ' + (m && m.t) + ': ' + (e && e.message ? e.message : e)); }
+    });
+    conn.on('close', () => this.setState('dead'));
+    conn.on('error', e => this.note('помилка каналу: ' + (e && e.message ? e.message : e)));
+  }
+  /* До трьох спроб на випадок зайнятого коду — рідкісно, простір 30^5, але
+     трапляється. Для гостя такого механізму не треба: він приєднується до
+     ЧУЖОГО коду, колізій там немає. */
+  async createRoom() {
+    this.reset(); this.me = 0;
+    for (let tries = 3; tries > 0; tries--) {
+      this.roomCode = randRoomCode(5);
+      try {
+        await new Promise((resolve, reject) => {
+          this.peer = new Peer(ROOM_PREFIX + this.roomCode, { config: ICE, debug: 1 });
+          const to = setTimeout(() => reject(new Error('брокер не відповідає')), 10000);
+          this.peer.on('open', () => { clearTimeout(to); resolve(); });
+          this.peer.on('connection', conn => this.bindConn(conn));
+          this.peer.on('error', err => { clearTimeout(to); reject(err); });
+        });
+        this.setState('waiting');
+        return this.roomCode;
+      } catch (e) {
+        if (e && e.type === 'unavailable-id') { try { this.peer.destroy(); } catch (er) {} continue; }
+        throw e;
+      }
+    }
+    throw new Error('не вдалось підібрати вільний код кімнати — спробуй ще раз');
+  }
+  async joinRoom(code) {
+    this.reset(); this.me = 1; this.roomCode = code;
+    await new Promise((resolve, reject) => {
+      this.peer = new Peer(undefined, { config: ICE, debug: 1 });
+      const to = setTimeout(() => reject(new Error('брокер не відповідає')), 10000);
+      this.peer.on('open', () => {
+        clearTimeout(to);
+        this.setState('waiting');
+        this.bindConn(this.peer.connect(ROOM_PREFIX + code, { reliable: true, serialization: 'json' }));
+        resolve();
+      });
+      this.peer.on('error', err => {
+        clearTimeout(to);
+        reject(err.type === 'peer-unavailable' ? new Error('кімнати ' + code + ' не існує — перевір код') : err);
+      });
+    });
+  }
+}
+
 /* Планувальник. Тік N виконується лише коли є команди ВІД УСІХ за цей
    тік. Свої команди публікуються на DELAY тіків уперед — цей запас і
    ховає затримку каналу. */
@@ -1287,6 +1499,7 @@ const el = {
   log:   document.getElementById('log'),    rail:  document.getElementById('rail'),
   veil:  document.getElementById('veil'),   veilT: document.getElementById('veilTitle'),
   veilX: document.getElementById('veilText'), veilB: document.getElementById('veilBtn'),
+  veilB2: document.getElementById('veilBtn2'), veilReady: document.getElementById('veilReady'),
   wave_: document.getElementById('btnWave'), pause: document.getElementById('btnPause'),
   speed: document.getElementById('btnSpeed'), verify: document.getElementById('btnVerify'),
   seed:  document.getElementById('seed'),   diff:  document.getElementById('diff'),
@@ -1298,6 +1511,12 @@ const el = {
   coopDiag: document.getElementById('coopDiag'),
   mapSel: document.getElementById('mapSel'), modeSel: document.getElementById('modeSel'),
   mapNote: document.getElementById('mapNote'), next: document.getElementById('rNext'),
+  restart: document.getElementById('restart'),
+  lobbyHost: document.getElementById('btnLobbyHost'),
+  roomLink: document.getElementById('roomLink'), roomLinkText: document.getElementById('roomLinkText'),
+  lobbyCopy: document.getElementById('btnLobbyCopy'),
+  webhookUrl: document.getElementById('webhookUrl'), webhookTest: document.getElementById('btnWebhookTest'),
+  webhookHint: document.getElementById('webhookHint'), downloadLog: document.getElementById('btnDownloadLog'),
 };
 
 MAPS.forEach((m, i) => {
@@ -1310,13 +1529,21 @@ let sim, ls, tool = TOOLS[1], paused = false, speed = 1;
 let hoverX = -1, hoverY = -1, acc = 0, last = 0;
 let fx = [], looping = false, stalled = false, desync = null;
 
-const net = new Net();
+let net = new Net();
 const myHash = new Map(), theirHash = new Map();
 
 /* Номер покоління партії. Після перезапуску він росте, і команди зі
    старої партії, що ще летять каналом, не потраплять у нову. */
 let gen = 0;
 const stash = [];
+
+/* У коопі гра більше не стартує сама щойно канал відкрився: спочатку
+   лобі, де хост крутить налаштування, а гість тисне «Готовий». Прапорець
+   каже, чи партія вже фактично почалась (є Sim із бойовим станом), щоб
+   відрізнити лобі від гри-в-процесі та від екрана завершення. */
+let gameStarted = false;
+let lobbyCfgSeq = 0;      // росте щоразу, як хост міняє налаштування в лобі
+let guestReadySeq = -1;   // на яку версію налаштувань гість уже підтвердив готовність
 
 /* Між натисканням «Застосувати» і першим спільним стартом гість уже має
    номер 1, а симуляція в нього ще однокористувацька — гравця з таким
@@ -1334,6 +1561,8 @@ function boot(g) {
   ls  = new Lockstep(n, gen, stash);
   myHash.clear(); theirHash.clear();
   fx = []; paused = false; acc = 0; last = 0; stalled = false; desync = null;
+  inLobby = false;
+  resetStats();
   el.pause.textContent = 'Пауза';
   el.veil.hidden = true;
   el.log.innerHTML = '';
@@ -1343,6 +1572,7 @@ function boot(g) {
     ? sim.map.note + ' · ' + sim.pathLength() + ' клітин'
     : 'лабіринт: трасу будуєш сам, скелі не забудовуються';
   el.sMate.hidden = n < 2;
+  refreshHostLocks();
   drawRail();
   if (!looping) { looping = true; requestAnimationFrame(frame); }
 }
@@ -1412,7 +1642,7 @@ function say(text, cls) {
 
 /* ── ввід ────────────────────────────────────────────────────────────── */
 function enqueue(cmd) {
-  if (sim.over || desync) return;
+  if (!sim || sim.over || desync || (!net.solo && inLobby)) return;
   cmd.p = meId();
   ls.queue(cmd);
 }
@@ -1445,11 +1675,17 @@ addEventListener('keydown', e => {
   else if (k === 'f') cycleSpeed();
   else if (k === 'n') enqueue({ t:'wave' });
 });
+/* У коопі паузу веде хост: гостьова кнопка заблокована через
+   refreshHostLocks(), але лишаємо перевірку і тут — про всяк випадок
+   (клавіша «Пробіл» кнопкою не керується). Сама пауза — деталермінована
+   команда 'freeze', тож ефект розходиться на обидва боки лок-степом,
+   без окремого мережевого повідомлення. */
 function togglePause() {
-  if (net.live) { say('У кооперативі паузи немає', 'bad'); return; }
+  if (!net.solo && net.me !== 0) { say('Паузу керує господар', 'bad'); return; }
+  if (!net.solo && (inLobby || !sim || sim.over)) return;
   paused = !paused;
   el.pause.textContent = paused ? 'Далі' : 'Пауза';
-  enqueue({ t:'freeze', v: paused ? 1 : 0 });   // пауза — така сама команда, як будівництво
+  enqueue({ t:'freeze', v: paused ? 1 : 0 });
 }
 function cycleSpeed() {
   if (net.live) { say('Швидкість фіксована в кооперативі', 'bad'); return; }
@@ -1464,28 +1700,101 @@ function writeSetup(s) {
   el.seed.value = s.seed; el.diff.value = String(s.diff);
   el.mapSel.value = String(s.map | 0); el.modeSel.value = String(s.mode | 0);
 }
-/* Гість не крутить налаштування: інакше сторони розійшлись би мовчки. */
-function lockSetup(locked) {
-  for (const c of [el.seed, el.diff, el.mapSel, el.modeSel, document.getElementById('restart')])
-    c.disabled = locked;
+function randomSeed() { return 'S' + Math.random().toString(36).slice(2, 8).toUpperCase(); }
+
+/* Гість ніколи не крутить налаштування. Хост — тільки поки в лобі: під
+   час бою чи екрана результатів поля заблоковані, щоб випадкова зміна
+   не змішалась зі стартом нової партії. */
+function refreshHostLocks() {
+  const guestSide = !net.solo && net.me !== 0;
+  const midGame = !net.solo && !inLobby;
+  const locked = guestSide || midGame;
+  for (const c of [el.seed, el.diff, el.mapSel, el.modeSel]) c.disabled = locked;
+  el.restart.disabled = guestSide;
+  el.pause.disabled = guestSide;
 }
-function restart() {
-  if (net.live && net.me !== 0) { say('Новий забіг починає господар', 'bad'); return; }
-  if (!net.solo && net.onDiag) net.onDiag();
-  if (net.live) {
-    net.send({ t:'r', g: gen + 1, s: readSetup() });
-    boot(gen + 1);
-  } else boot();
+
+/* ── лобі: хост крутить налаштування, гість тисне «Готовий» ─────────────
+   Будь-яка зміна хоста піднімає lobbyCfgSeq і скидає готовність гостя —
+   застаріле «готовий» на старі налаштування ніколи не пройде звірку. */
+let inLobby = false;
+let guestReadyLocal = false;
+let myCfgSeq = 0;
+
+function lobbyText() {
+  const m = MAPS[parseInt(el.mapSel.value, 10)] || MAPS[0];
+  const modeName = parseInt(el.modeSel.value, 10) === MODE_FIXED ? 'фіксований шлях' : 'лабіринт';
+  const diffName = el.diff.options[el.diff.selectedIndex].text;
+  return m.name + ' · ' + modeName + ' · складність ' + diffName + ' · сід ' + (el.seed.value || 'MAZE-01');
 }
+function renderLobby() {
+  if (net.solo || !inLobby) return;
+  el.veil.hidden = false;
+  el.veil.className = 'veil lobby';
+  el.veilT.textContent = 'Лобі';
+  el.veilB.hidden = false; el.veilB2.hidden = true;
+  if (net.me === 0) {
+    el.veilX.textContent = lobbyText();
+    el.veilReady.hidden = false;
+    const ready = guestReadySeq === lobbyCfgSeq;
+    el.veilReady.className = 'readyDot' + (ready ? ' on' : '');
+    el.veilReady.querySelector('span').textContent = ready ? 'Гість готовий' : 'Гість обирає…';
+    el.veilB.disabled = !ready;
+    el.veilB.textContent = 'Розпочати гру';
+    el.veilB.onclick = hostStartFromLobby;
+  } else {
+    el.veilX.textContent = lobbyText() + ' — обирає господар';
+    el.veilReady.hidden = true;
+    el.veilB.disabled = guestReadyLocal;
+    el.veilB.textContent = guestReadyLocal ? 'Готовий ✓ (чекаю господаря)' : 'Готовий';
+    el.veilB.onclick = guestSendReady;
+  }
+}
+function hostSendCfg() {
+  lobbyCfgSeq++; guestReadySeq = -1;
+  net.send({ t:'cfg', s: readSetup(), seq: lobbyCfgSeq });
+  renderLobby();
+}
+function hostStartFromLobby() {
+  if (guestReadySeq !== lobbyCfgSeq) return;
+  inLobby = false;
+  net.send({ t:'r', g: gen + 1, s: readSetup() });
+  boot(gen + 1);
+}
+function hostRematch() {
+  el.seed.value = randomSeed();
+  inLobby = false;
+  net.send({ t:'r', g: gen + 1, s: readSetup() });
+  boot(gen + 1);
+}
+function hostNewGame() {
+  if (net.solo) { boot(); return; }
+  if (net.me !== 0) return;               // гостьові поля й так заблоковані — подвійний захист
+  inLobby = true;
+  lobbyCfgSeq++; guestReadySeq = -1;
+  net.send({ t:'cfg', s: readSetup(), seq: lobbyCfgSeq });
+  refreshHostLocks();
+  renderLobby();
+}
+function guestSendReady() {
+  guestReadyLocal = true;
+  net.send({ t:'ready', seq: myCfgSeq });
+  renderLobby();
+}
+function onHeaderChange() {
+  if (net.solo) { boot(); return; }
+  if (net.me !== 0) return;
+  if (inLobby) hostSendCfg();
+}
+
 el.pause.onclick = togglePause;
 el.speed.onclick = cycleSpeed;
 el.wave_.onclick = () => enqueue({ t:'wave' });
-document.getElementById('restart').onclick = restart;
-el.veilB.onclick = restart;
-el.seed.onchange = restart;
-el.diff.onchange = restart;
-el.mapSel.onchange = restart;
-el.modeSel.onchange = restart;
+el.restart.onclick = hostNewGame;
+el.seed.onchange = onHeaderChange;
+el.diff.onchange = onHeaderChange;
+el.mapSel.onchange = onHeaderChange;
+el.modeSel.onchange = onHeaderChange;
 
 /* ── перевірка детермінізму ──────────────────────────────────────────── */
 el.verify.onclick = () => {
@@ -1505,22 +1814,34 @@ el.verify.onclick = () => {
   const ok = got === want;
   el.veil.hidden = false;
   el.veil.className = 'veil verify';
+  el.veilReady.hidden = true; el.veilB2.hidden = true; el.veilB.hidden = false;
   el.veilT.textContent = ok ? 'Збіг' : 'Розбіжність';
   el.veilX.textContent = ok
     ? target + ' тіків, ' + ls.hist.length + ' команд переграно з нуля → ' + got
     : 'очікували ' + want + ', отримали ' + got;
   el.veilB.textContent = 'Продовжити';
-  el.veilB.onclick = () => { el.veil.hidden = true; el.veilB.onclick = restart; el.veilB.textContent = 'Новий забіг'; };
+  el.veilB.onclick = () => { el.veil.hidden = true; };
   say(ok ? 'Детермінізм підтверджено: ' + got : 'РОЗБІЖНІСТЬ: ' + want + ' ≠ ' + got, ok ? 'good' : 'bad');
 };
 
-/* ── кооператив: обмін кодами ────────────────────────────────────────── */
+/* ── кооператив: обмін даними ────────────────────────────────────────── */
 net.onCmds = (g, tick, cmds) => ls.accept(g, tick, cmds, stash);
 net.onHash = (g, tick, h) => { if (g === gen) { theirHash.set(tick, h); compareHash(tick); } };
+net.onCfg = (s, seq) => {
+  writeSetup(s);
+  myCfgSeq = seq;
+  guestReadyLocal = false;
+  inLobby = true;                 // хост міг повернути в лобі й посеред бою
+  refreshHostLocks();
+  renderLobby();
+};
+net.onReady = seq => {
+  if (seq === lobbyCfgSeq) { guestReadySeq = seq; renderLobby(); }
+};
 net.onRestart = (g, s) => {
   writeSetup(s);
+  inLobby = false;
   boot(g);
-  if (net.live && net.me !== 0) el.coopHint.textContent = 'З’єднано. Налаштування веде господар.';
 };
 function lsDiag() {
   return 'тік ' + sim.tick + ' · покоління ' + gen +
@@ -1536,7 +1857,7 @@ net.onDiag = () => {
   el.coopDiag.textContent = net.diag() + String.fromCharCode(10) + lsDiag() +
     (net.evt && net.evt.length ? String.fromCharCode(10) + net.evt.join(String.fromCharCode(10)) : '');
   // Якщо зовнішніх адрес не знайшлося взагалі — попереджаємо одразу
-  if (net.state === 'waiting' && net.cand.srflx === 0 && net.cand.relay === 0 && net.iceErr > 0)
+  if (net.state === 'waiting' && net.cand && net.cand.srflx === 0 && net.cand.relay === 0 && net.iceErr > 0)
     el.coopHint.textContent = 'STUN/TURN не відповідають — назовні вас не видно. ' +
       'Спрацює лише в межах однієї мережі.';
 };
@@ -1547,25 +1868,27 @@ net.onState   = s => {
     (s === 'live' ? ('Гравець ' + (net.me + 1)) : s === 'waiting' ? 'Чекаю' : s === 'dead' ? 'Розрив' : s === 'stale' ? 'Немає відповіді' : 'Соло');
   if (s === 'live') {
     paused = false; speed = 1; el.speed.textContent = '1×'; el.pause.textContent = 'Пауза';
-    el.code.value = '';
+    el.code.value = ''; el.roomLink.hidden = true;
     say('З’єднання встановлено', 'good');
-    lockSetup(net.me !== 0);      // налаштування веде господар
+    inLobby = true; guestReadySeq = -1; guestReadyLocal = false;
+    refreshHostLocks();
     /* Партія в мережі — це покоління 1. Команди господаря, що прилетять
        до перезапуску гостя, матимуть g=1 > його поточного 0, тож
        відкладуться в чергу й застосуються після старту, а не згинуть. */
     if (net.me === 0) {
-      net.send({ t:'r', g:1, s:readSetup() });
-      el.coopHint.textContent = 'З’єднано. Життя спільні, золото окреме.';
-      boot(1);
+      lobbyCfgSeq = 1;
+      net.send({ t:'cfg', s: readSetup(), seq: lobbyCfgSeq });
+      el.coopHint.textContent = 'Лобі. Обери мапу й режим — «Розпочати» стане активним, коли гість натисне «Готовий».';
     } else {
       el.coopHint.textContent = 'З’єднано. Чекаю налаштування господаря…';
     }
+    renderLobby();
   } else if (s === 'stale') {
     el.coopHint.textContent = 'Канал відкрито, але напарник мовчить — код застарів. ' +
       'Обидва перезавантажте сторінку й обміняйтесь кодами наново, без пауз.';
     say('Напарник не відповів на привітання', 'bad');
   } else if (s === 'dead') {
-    el.coopHint.textContent = net.cand.relay === 0
+    el.coopHint.textContent = net.cand && net.cand.relay === 0
       ? 'Не вдалось з’єднатись. Прямого маршруту немає, ретранслятор теж не дав адрес.'
       : 'Канал розірвано.';
     el.coopDiag.textContent = net.diag() + String.fromCharCode(10) + lsDiag() +
@@ -1574,20 +1897,59 @@ net.onState   = s => {
   }
 };
 
-/* Якщо WebRTC недоступний — кажемо про це одразу й пояснюємо вихід,
-   а не даємо натиснути кнопку й отримати помилку. */
+/* Перемикання транспорту: обробники ті самі, змінюється лише те, чим
+   вони їздять. Дає запасний шлях — якщо лобі через PeerJS не з'єднається,
+   ручний обмін кодами (клас Net) лишається робочим варіантом. */
+function attachNet(n) {
+  n.onCmds = net.onCmds; n.onHash = net.onHash; n.onRestart = net.onRestart;
+  n.onState = net.onState; n.onDiag = net.onDiag; n.onCfg = net.onCfg; n.onReady = net.onReady;
+  net.reset();
+  net = n;
+}
+
+/* Якщо WebRTC недоступний — кажемо про це одразу й пояснюємо, а не
+   даємо натиснути кнопку й отримати незрозумілу помилку. */
 function coopBlocked() {
   if (RTC) return false;
-  el.host.disabled = true; el.use.disabled = true;
+  el.host.disabled = true; el.use.disabled = true; el.lobbyHost.disabled = true;
   el.netState.className = 'netState dead';
   el.netState.innerHTML = '<span class="dot"></span>Недоступно';
-  el.coopHint.textContent = 'Тут кооп не працює: пісочниця сторінки блокує WebRTC. ' +
-    'Відкрий файл index.html локально — там усе є.';
+  el.coopHint.textContent = 'У цьому браузері WebRTC недоступний — кооп не працюватиме.';
   return true;
 }
 
+/* ── лобі через посилання (основний спосіб) ──────────────────────────── */
+el.lobbyHost.onclick = async () => {
+  if (coopBlocked()) return;
+  if (!net.solo) { el.coopHint.textContent = 'Вже під’єднано або очікую з’єднання.'; return; }
+  if (typeof Peer !== 'function') {
+    el.coopHint.textContent = 'Бібліотека лобі не завантажилась — скористайся «Ручним способом» нижче.';
+    return;
+  }
+  attachNet(new PeerNet());
+  el.coopHint.textContent = 'Створюю кімнату…';
+  try {
+    const code = await net.createRoom();
+    const link = location.origin + location.pathname + '?room=' + code;
+    history.replaceState(null, '', '?room=' + code);
+    el.roomLink.hidden = false;
+    el.roomLinkText.textContent = link;
+    el.coopHint.textContent = 'Надішли це посилання другу — приєднається сам, щойно відкриє.';
+  } catch (e) {
+    el.coopHint.textContent = 'Не вийшло: ' + (e && e.message ? e.message : e);
+  }
+};
+el.lobbyCopy.onclick = () => {
+  if (!el.roomLinkText.textContent) return;
+  navigator.clipboard.writeText(el.roomLinkText.textContent)
+    .then(() => { el.coopHint.textContent = 'Скопійовано.'; })
+    .catch(() => {});
+};
+
+/* ── ручний спосіб (запасний, якщо лобі не з'єднується) ──────────────── */
 el.host.onclick = async () => {
   if (coopBlocked()) return;
+  if (!(net instanceof Net)) attachNet(new Net());
   if (net.state === 'waiting' || net.state === 'live') {
     el.coopHint.textContent = net.state === 'live'
       ? 'Ви вже з’єднані.'
@@ -1617,6 +1979,7 @@ el.use.onclick = async () => {
     /* Дію обирає САМ КОД, а не внутрішній стан. Раніше після невдалої
        спроби гість не міг приєднатись заново без перезавантаження. */
     if (m.r === 'o') {
+      if (!(net instanceof Net)) attachNet(new Net());
       /* Друге натискання створює НОВЕ з'єднання, а господар лишається з
          першим — і обидва застрягають. Тому просто не даємо. */
       if (net.state === 'waiting' || net.state === 'live') {
@@ -1646,6 +2009,30 @@ el.copy.onclick = () => {
     .catch(() => { el.coopHint.textContent = 'Скопіюй вручну: Ctrl+C.'; });
 };
 
+/* ── приєднання за посиланням ────────────────────────────────────────── */
+/* Викликається пізніше, ПІСЛЯ початкового boot(): якщо запустити її тут-таки,
+   net встигає стати 'waiting' ще до того, як низовий boot() вирішить,
+   скільки гравців у сесії — вийшла б соло-партія з коопівською сіткою. */
+function autoJoinFromLink() {
+  const room = new URLSearchParams(location.search).get('room');
+  if (!room) return;
+  el.lobbyHost.hidden = true;
+  el.coopHint.textContent = 'Запрошення до кімнати ' + room + '. Приєднуюсь…';
+  if (coopBlocked()) return;
+  if (typeof Peer !== 'function') {
+    el.coopHint.textContent = 'Бібліотека лобі не завантажилась. Попроси господаря надіслати код вручну.';
+    el.lobbyHost.hidden = false;
+    return;
+  }
+  attachNet(new PeerNet());
+  net.joinRoom(room.toUpperCase())
+    .then(() => { el.coopHint.textContent = 'З’єднуюсь із кімнатою ' + room + '…'; })
+    .catch(e => {
+      el.coopHint.textContent = 'Не вдалось приєднатись: ' + (e && e.message ? e.message : e);
+      el.lobbyHost.hidden = false;
+    });
+}
+
 /* ── цикл ────────────────────────────────────────────────────────────── */
 /* Виклик наступного кадру стоїть в кінці, тож будь-який виняток усередині
    обривав цикл НАЗАВЖДИ: сторінка жива, мережа приймає дані, а гра стоїть.
@@ -1672,11 +2059,11 @@ function frameBody(now) {
   const wired = net.live;
   const sender = wired ? ((t, b) => net.send({ t:'c', g:gen, k:t, m:b })) : null;
 
-  /* Гра йде завжди, крім кінця забігу й розсинхрону. Поки чекаємо
-     напарника, крутимо як соло — при з'єднанні все одно почнеться
+  /* Гра йде завжди, крім кінця забігу, розсинхрону й часу в лобі. Поки
+     чекаємо напарника, крутимо як соло — при з'єднанні все одно почнеться
      наново з тіку 0. Раніше тут стояла умова, від якої гра завмирала
      одразу після натискання «Створити гру». */
-  if (!sim.over && !desync) {
+  if (sim && !sim.over && !desync && (net.solo || !inLobby)) {
     acc += dt * (sim.frozen ? 1 : speed);
     let guard = 0;
     stalled = false;
@@ -1708,27 +2095,38 @@ function compareHash(t) {
   say('ДЕСИНК на тіку ' + t + ': ' + a + ' ≠ ' + b, 'bad');
   el.veil.hidden = false;
   el.veil.className = 'veil lost';
+  el.veilReady.hidden = true; el.veilB2.hidden = true;
   el.veilT.textContent = 'Розсинхрон';
-  el.veilX.textContent = 'Тік ' + t + ' · у тебе ' + a + ' · у напарника ' + b;
+  const guestSide = !net.solo && net.me !== 0;
+  el.veilX.textContent = 'Тік ' + t + ' · у тебе ' + a + ' · у напарника ' + b + (guestSide ? ' · очікую дій господаря' : '');
+  el.veilB.hidden = guestSide;
   el.veilB.textContent = 'Новий забіг';
-  el.veilB.onclick = restart;
+  el.veilB.onclick = () => { if (net.solo) boot(); else hostNewGame(); };
 }
+
+/* Підсумок партії для локального журналу й вебхука — рахуємо лише
+   власні дії (build/up/raze), бій (kill/leak) спільний для обох. */
+function resetStats() {
+  stats = { built:0, upgraded:0, razed:0, kills:0, leaks:0, bounty:0, denied:0 };
+}
+let stats; resetStats();
 
 /* Події симуляції → журнал і спалахи. Читаємо, не пишемо. */
 function digest() {
   for (const e of sim.events) {
     if (e.e === 'wave')       say('Хвиля ' + e.n + ' — ' + KIND_NAME[e.kind] + (e.esc ? ' із супроводом' : ''), 'note');
-    else if (e.e === 'up')    { if (e.p === meId()) say('Прокачано до рівня ' + e.lvl, 'good'); }
+    else if (e.e === 'up')    { if (e.p === meId()) { stats.upgraded++; say('Прокачано до рівня ' + e.lvl, 'good'); } }
     else if (e.e === 'aim')   { if (e.p === meId()) say('Ціль: ' + AIMS[e.m], 'note'); }
     else if (e.e === 'clear') say('Хвилю ' + e.n + ' відбито. +' + e.gold + ' зол.', 'good');
-    else if (e.e === 'leak')  { say('Прорив! −' + e.dmg + ' життя', 'bad'); fx.push({ t:'ring', x:e.x, y:e.y, life:20, max:20, c:C('--coral') }); }
-    else if (e.e === 'raze')  { if (e.p === meId()) say(e.full ? ('Знесено, повернено все: +' + e.gold) : ('Знесено зі штрафом: +' + e.gold), e.full ? 'good' : null); }
-    else if (e.e === 'deny')  { if (e.p === meId()) say('Не можна: ' + e.why, 'bad'); }
+    else if (e.e === 'leak')  { stats.leaks++; say('Прорив! −' + e.dmg + ' життя', 'bad'); fx.push({ t:'ring', x:e.x, y:e.y, life:20, max:20, c:C('--coral') }); }
+    else if (e.e === 'raze')  { if (e.p === meId()) { stats.razed++; say(e.full ? ('Знесено, повернено все: +' + e.gold) : ('Знесено зі штрафом: +' + e.gold), e.full ? 'good' : null); } }
+    else if (e.e === 'deny')  { if (e.p === meId()) { stats.denied++; say('Не можна: ' + e.why, 'bad'); } }
     else if (e.e === 'early') say('Достроково. +' + e.gold + ' зол.', 'good');
     else if (e.e === 'lost')  showLost();
     else if (e.e === 'boom')  fx.push({ t:'ring', x:e.x, y:e.y, life:12, max:12, c:C('--t-mortar'), r:e.r });
-    else if (e.e === 'bounty')fx.push({ t:'spark', x:e.x, y:e.y, life:22, max:22, c:C('--brass') });
-    else if (e.e === 'kill')  fx.push({ t:'spark', x:e.x, y:e.y, life:10, max:10, c:C('--text-faint') });
+    else if (e.e === 'bounty'){ stats.bounty++; fx.push({ t:'spark', x:e.x, y:e.y, life:22, max:22, c:C('--brass') }); }
+    else if (e.e === 'kill')  { stats.kills++; fx.push({ t:'spark', x:e.x, y:e.y, life:10, max:10, c:C('--text-faint') }); }
+    else if (e.e === 'build') { if (e.p === meId()) stats.built++; }
   }
   for (const f of fx) f.life--;
   fx = fx.filter(f => f.life > 0);
@@ -1736,10 +2134,67 @@ function digest() {
 function showLost() {
   el.veil.hidden = false;
   el.veil.className = 'veil lost';
+  el.veilReady.hidden = true;
   el.veilT.textContent = 'Оборону зламано';
-  el.veilX.textContent = 'Витримано хвиль: ' + (sim.wave - 1) + ' · сід ' + sim.seedStr;
-  el.veilB.textContent = 'Новий забіг';
-  el.veilB.onclick = boot;
+  const base = 'Витримано хвиль: ' + (sim.wave - 1) + ' · сід ' + sim.seedStr;
+  if (net.solo) {
+    el.veilX.textContent = base;
+    el.veilB.hidden = false; el.veilB.disabled = false;
+    el.veilB.textContent = 'Новий забіг'; el.veilB.onclick = () => boot();
+    el.veilB2.hidden = true;
+  } else if (net.me === 0) {
+    el.veilX.textContent = base;
+    el.veilB.hidden = false; el.veilB.disabled = false;
+    el.veilB.textContent = 'Реванш'; el.veilB.onclick = hostRematch;
+    el.veilB2.hidden = false; el.veilB2.textContent = 'Нова гра'; el.veilB2.onclick = hostNewGame;
+  } else {
+    el.veilX.textContent = base + ' · очікую дій господаря';
+    el.veilB.hidden = true; el.veilB2.hidden = true;
+  }
+  reportGame();
+}
+
+/* ── журнал партій ───────────────────────────────────────────────────────
+   Локально — завжди, у пам'яті вкладки. Вебхук — лише якщо сам глядач
+   його налаштував: URL живе в localStorage ЦЬОГО браузера й ніколи не
+   потрапляє в код, тож кожен, хто грає, лишається сам собі аналітиком. */
+let gameLog = [];
+
+function reportGame() {
+  const entry = {
+    ts: new Date().toISOString(),
+    map: sim.map.name, mode: sim.mode === MODE_FIXED ? 'fixed' : 'maze',
+    diff: sim.diff, seed: sim.seedStr, players: sim.nPlayers,
+    role: net.solo ? 'solo' : (net.me === 0 ? 'host' : 'guest'),
+    wave: sim.wave - 1, durationSec: Math.round(sim.tick / TPS),
+    stats: Object.assign({}, stats),
+    finalGold: sim.players.map(p => p.gold),
+  };
+  gameLog.push(entry);
+  const url = (localStorage.getItem('cp_webhook') || '').trim();
+  if (url) sendWebhook(url, discordPayload(entry)).catch(() => {});
+}
+async function sendWebhook(url, payload) {
+  return fetch(url, { method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
+}
+function discordPayload(e) {
+  const roleName = e.role === 'host' ? 'господар' : e.role === 'guest' ? 'гість' : 'соло';
+  const dur = Math.floor(e.durationSec / 60) + 'х' + String(e.durationSec % 60).padStart(2, '0');
+  return { embeds: [{
+    title: 'Chokepoint · партія завершена',
+    color: 0xE0574A,
+    fields: [
+      { name:'Мапа',           value: e.map + ' · ' + (e.mode === 'fixed' ? 'фіксований шлях' : 'лабіринт'), inline:true },
+      { name:'Роль',           value: roleName + (e.players > 1 ? ' (кооп)' : ' (соло)'), inline:true },
+      { name:'Хвиля',          value: String(e.wave), inline:true },
+      { name:'Тривалість',     value: dur, inline:true },
+      { name:'Складність',     value: e.diff + '%', inline:true },
+      { name:'Сід',            value: e.seed, inline:true },
+      { name:'Побудовано / прокачано / знесено', value: e.stats.built + ' / ' + e.stats.upgraded + ' / ' + e.stats.razed, inline:true },
+      { name:'Вбито / прорвалось',               value: e.stats.kills + ' / ' + e.stats.leaks, inline:true },
+    ],
+    timestamp: e.ts,
+  }] };
 }
 
 function hud() {
@@ -2004,13 +2459,37 @@ function drawCreep(c, alpha) {
   ctx.fillRect(x - w / 2, y - r - h - 3, w * f, h);
 }
 
+/* ── журнал партій: налаштування вебхука й вивантаження ──────────────── */
+el.webhookUrl.value = localStorage.getItem('cp_webhook') || '';
+el.webhookUrl.oninput = () => localStorage.setItem('cp_webhook', el.webhookUrl.value.trim());
+el.webhookTest.onclick = async () => {
+  const url = el.webhookUrl.value.trim();
+  if (!url) { el.webhookHint.textContent = 'Встав URL спочатку.'; return; }
+  el.webhookHint.textContent = 'Надсилаю…';
+  try {
+    const r = await sendWebhook(url, { content: '✅ Тестове повідомлення з Chokepoint — вебхук працює.' });
+    if (r.ok) { localStorage.setItem('cp_webhook', url); el.webhookHint.textContent = 'Дійшло! Збережено.'; }
+    else el.webhookHint.textContent = 'Discord відповів помилкою ' + r.status + '.';
+  } catch (e) { el.webhookHint.textContent = 'Не вийшло: ' + (e && e.message ? e.message : e); }
+};
+el.downloadLog.onclick = () => {
+  if (!gameLog.length) { say('Ще немає завершених партій у цій сесії', 'bad'); return; }
+  const blob = new Blob([JSON.stringify(gameLog, null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'chokepoint-log-' + Date.now() + '.json';
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(a.href);
+};
+
 /* ── старт ───────────────────────────────────────────────────────────── */
 resize();
 boot();
 coopBlocked();     // одразу показати стан кооперативу, не чекаючи кліку
 el.coopDiag.textContent = 'вікно №' + net.myId + ' · версія ' + BUILD + ' — у обох має бути однакова';
+autoJoinFromLink();   // ?room=... у посиланні — після boot(), щоб не змішати solo зі стартом коопу
 window.CHOKEPOINT = {
   get sim() { return sim; }, get ls() { return ls; }, get net() { return net; },
-  Sim, Lockstep, Net, BUILD,
+  Sim, Lockstep, Net, PeerNet, BUILD,
 };
 </script>
