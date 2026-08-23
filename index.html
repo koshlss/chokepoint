@@ -89,6 +89,9 @@ button:disabled:hover{background:var(--panel); border-color:var(--line)}
 .stat .v.calm{color:var(--steel)}
 .stat .v small{font-size:12px; color:var(--text-faint)}
 
+.playersTop{background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
+  padding:9px 12px; display:flex; flex-direction:column; gap:7px}
+
 /* ─── головна сітка ─── */
 .main{display:grid; grid-template-columns:236px minmax(0,1fr); gap:14px; align-items:start}
 @media (max-width:860px){ .main{grid-template-columns:1fr} }
@@ -175,6 +178,7 @@ canvas{display:block; width:100%; height:auto; touch-action:none; cursor:crossha
 .veil.lost h2{color:var(--coral)}
 .veil.verify h2{color:var(--steel); font-size:22px}
 .veil.lobby h2{color:var(--brass); font-size:24px}
+.veil.start h2{color:var(--moss); font-size:24px}
 .veil .row{display:flex; gap:10px; flex-wrap:wrap; justify-content:center}
 .veil .row button{min-width:150px}
 .readyDot{display:inline-flex; align-items:center; gap:6px; font-family:var(--mono); font-size:12.5px}
@@ -258,12 +262,18 @@ table.roster tr:first-child td{color:var(--text)}
   <div class="readout">
     <div class="stat"><div class="k">Хвиля</div><div class="v" id="rWave">0</div></div>
     <div class="stat"><div class="k">Життя</div><div class="v" id="rLives">20</div></div>
-    <div class="stat"><div class="k">Твоє золото</div><div class="v gold" id="rGold">0</div></div>
-    <div class="stat" id="sMate" hidden><div class="k">Напарник</div><div class="v calm" id="rMate">0</div></div>
-    <div class="stat"><div class="k">Довжина шляху</div><div class="v calm" id="rPath">0<small> кл.</small></div></div>
     <div class="stat"><div class="k">Наступна хвиля</div><div class="v" id="rNext" style="font-size:15px">—</div></div>
-    <div class="stat"><div class="k">Тік</div><div class="v" id="rTick">0</div></div>
-    <div class="stat"><div class="k">Хеш стану</div><div class="v" id="rHash" style="font-size:15px">—</div></div>
+  </div>
+
+  <div class="playersTop">
+    <div class="identRow">
+      <input type="text" id="myName" maxlength="18" spellcheck="false" placeholder="Твій нік">
+      <span class="swatches" id="mySwatches"></span>
+    </div>
+    <table class="roster">
+      <thead><tr><th></th><th>Гравець</th><th>Вбито</th><th>Шкода</th><th>Золото</th><th>HP</th><th>Веж</th></tr></thead>
+      <tbody id="rosterBody"></tbody>
+    </table>
   </div>
 
   <div class="main">
@@ -332,16 +342,6 @@ table.roster tr:first-child td{color:var(--text)}
             </div>
           </details>
         </div>
-
-        <h2>Гравці</h2>
-        <div class="identRow">
-          <input type="text" id="myName" maxlength="18" spellcheck="false" placeholder="Твій нік">
-          <span class="swatches" id="mySwatches"></span>
-        </div>
-        <table class="roster">
-          <thead><tr><th></th><th>Гравець</th><th>Вбито</th><th>Шкода</th><th>Золото</th><th>HP</th><th>Веж</th></tr></thead>
-          <tbody id="rosterBody"></tbody>
-        </table>
 
         <details class="adv">
           <summary>Дані партії (для аналізу)</summary>
@@ -1149,7 +1149,7 @@ const ICE = { iceServers: [
    що мовчав, хоча ICE був connected. */
 const CHAN = { ordered: true, negotiated: true, id: 0 };
 
-const BUILD = '2026-08-24d';
+const BUILD = '2026-08-24e';
 
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
@@ -1568,8 +1568,6 @@ const C   = n => css.getPropertyValue(n).trim();
 
 const el = {
   wave:  document.getElementById('rWave'),  lives: document.getElementById('rLives'),
-  gold:  document.getElementById('rGold'),  path:  document.getElementById('rPath'),
-  tick:  document.getElementById('rTick'),  hash:  document.getElementById('rHash'),
   log:   document.getElementById('log'),    rail:  document.getElementById('rail'),
   veil:  document.getElementById('veil'),   veilT: document.getElementById('veilTitle'),
   veilX: document.getElementById('veilText'), veilB: document.getElementById('veilBtn'),
@@ -1578,7 +1576,6 @@ const el = {
   speed: document.getElementById('btnSpeed'), verify: document.getElementById('btnVerify'),
   seed:  document.getElementById('seed'),   diff:  document.getElementById('diff'),
   showPath: document.getElementById('showPath'), showRange: document.getElementById('showRange'),
-  mate: document.getElementById('rMate'), sMate: document.getElementById('sMate'),
   host: document.getElementById('btnHost'), use: document.getElementById('btnUse'),
   copy: document.getElementById('btnCopy'), code: document.getElementById('codeBox'),
   netState: document.getElementById('netState'), coopHint: document.getElementById('coopHint'),
@@ -1607,6 +1604,26 @@ MAPS.forEach((m, i) => {
 let sim, ls, simMate = null, mateOverSaid = false, lobbyPreview = null, tool = TOOLS[1], paused = false, speed = 1;
 let hoverX = -1, hoverY = -1, acc = 0, last = 0;
 let fx = [], looping = false, stalled = false, desync = null;
+
+/* Перший запуск не мусить одразу кидати в бій — дай обрати мапу/режим,
+   чи створити лобі. Далі (рестарт, нова партія, поразка) вже без цього
+   екрана: користувач один раз свідомо натиснув «Почати». Прапорець
+   gameStarted для цього вже був заведений нижче (declared, ще не
+   використовувався) — саме його й задіюємо. */
+function hasRoomParam() { return !!(new URLSearchParams(location.search).get('room')); }
+function showStartVeil() {
+  el.veil.hidden = false;
+  el.veil.className = 'veil start';
+  el.veilReady.hidden = true; el.veilB2.hidden = true; el.veilB.hidden = false;
+  el.veilT.textContent = 'Chokepoint';
+  el.veilX.textContent = 'Обери мапу, режим і складність вгорі — або створи лобі внизу для гри вдвох.';
+  el.veilB.textContent = 'Почати гру';
+  el.veilB.onclick = () => {
+    gameStarted = true;
+    enqueue({ t:'freeze', v:0 });
+    el.veil.hidden = true;
+  };
+}
 
 let net = new Net();
 const myHash = new Map(), theirHash = new Map(), myMateHash = new Map();
@@ -1711,13 +1728,15 @@ function boot(g) {
   el.mapNote.textContent = sim.mode === MODE_FIXED
     ? sim.map.note + ' · ' + sim.pathLength() + ' клітин'
     : 'лабіринт: трасу будуєш сам, скелі не забудовуються';
-  el.sMate.hidden = n < 2 || duelBoards;
   el.mateBoard.hidden = !duelBoards;
   el.mateBoard.classList.remove('over');
   refreshHostLocks();
   drawRail();
   if (!looping) { looping = true; requestAnimationFrame(frame); }
   resize();
+
+  if (!net.solo || hasRoomParam()) gameStarted = true;
+  if (!gameStarted) { enqueue({ t:'freeze', v:1 }); showStartVeil(); }
 }
 
 /* ── арсенал ─────────────────────────────────────────────────────────── */
@@ -2277,9 +2296,13 @@ function frameBody(now) {
       acc -= stepMs;
       const merged = ls.merged(sim.tick);
       if (duelBoards) {
+        // Пауза й виклик хвилі — не «моя половина проти твоєї», а спільний
+        // контроль над матчем: пауза від будь-кого мусить зупинити ОБИДВІ
+        // дошки, інакше один сидить у меню, поки в іншого йде бій.
         const my = netP();
-        sim.step((merged || []).filter(c => c.p === my).map(c => Object.assign({}, c, { p:0 })));
-        simMate.step((merged || []).filter(c => c.p !== my).map(c => Object.assign({}, c, { p:0 })));
+        const globalCmd = c => c.t === 'freeze' || c.t === 'wave';
+        sim.step((merged || []).filter(c => c.p === my || globalCmd(c)).map(c => Object.assign({}, c, { p:0 })));
+        simMate.step((merged || []).filter(c => c.p !== my || globalCmd(c)).map(c => Object.assign({}, c, { p:0 })));
         digestMate();
       } else {
         sim.step(merged);
@@ -2475,23 +2498,17 @@ function renderRoster() {
 
 function hud() {
   renderRoster();
-  const me = meId();
   el.wave.textContent  = sim.wave;
   el.lives.textContent = sim.lives;
   el.lives.className   = 'v' + (sim.lives <= 5 ? ' warn' : '');
-  el.gold.textContent  = sim.players[me].gold;
-  if (sim.players.length > 1) el.mate.textContent = sim.players[1 - me].gold;
   if (duelBoards && simMate) {
     el.mbWave.textContent  = simMate.over ? (simMate.wave - 1) + ' (кінець)' : simMate.wave;
     el.mbLives.textContent = simMate.lives;
     el.mbGold.textContent  = simMate.players[0].gold;
   }
-  el.path.innerHTML    = sim.pathLength() + '<small> кл.</small>';
   const nx = sim.nextInfo();
   el.next.textContent  = KIND_NAME[nx.kind] + ' ×' + nx.n + (nx.boss ? ' + супровід' : '');
   el.next.className    = 'v' + (nx.kind === 3 ? ' warn' : nx.kind === 2 ? ' calm' : '');
-  el.tick.textContent  = sim.tick;
-  el.hash.textContent  = sim.hash();
   el.wave_.textContent = stalled ? 'Чекаю напарника…'
     : sim.phase !== 0 ? 'Хвиля ' + sim.wave + ' іде'
     : sim.waveVotes.size > 0
