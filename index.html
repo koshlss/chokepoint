@@ -192,6 +192,19 @@ details.adv > summary:hover{color:var(--text-dim)}
 details.adv .body{padding-top:8px; display:flex; flex-direction:column; gap:7px}
 .webhookRow{display:flex; gap:6px; align-items:center; flex-wrap:wrap}
 .webhookRow input[type=text]{flex:1; min-width:160px; width:auto}
+
+/* ─── дуель: своя дошка на гравця ─── */
+#duelField{opacity:1; transition:opacity .15s}
+#duelField.na{opacity:.35; pointer-events:none}
+.mateBoard{border:1px solid var(--line); border-radius:var(--r); background:var(--ink-2); overflow:hidden}
+.mateBoard .bar{display:flex; align-items:center; gap:8px; padding:6px 9px; border-bottom:1px solid var(--line);
+  font-family:var(--display); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--text-faint)}
+.mateBoard .bar b{color:var(--text-dim); font-weight:600; text-transform:none; letter-spacing:0; font-size:12px}
+.mateBoard .bar .sep{margin-left:auto; display:flex; gap:10px; font-family:var(--mono); font-variant-numeric:tabular-nums}
+.mateBoard .bar .sep span.warn{color:var(--coral)}
+.mateBoard canvas{display:block; width:100%; height:auto; opacity:.92}
+.mateBoard.over canvas{filter:grayscale(.6) brightness(.55)}
+.mateBoard .dead{font-family:var(--display); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--coral)}
 </style>
 
 <div class="wrap">
@@ -216,6 +229,9 @@ details.adv .body{padding-top:8px; display:flex; flex-direction:column; gap:7px}
           <option value="100" selected>Норма</option>
           <option value="145">Важко</option>
         </select>
+      </label>
+      <label class="field" id="duelField" title="Кожен на своїй копії траси, зі своїм HP і своєю хвилею — лише для фіксованого шляху вдвох">
+        <input type="checkbox" id="duelToggle"> Кожен сам за себе
       </label>
       <button id="restart">Новий забіг</button>
     </div>
@@ -257,6 +273,18 @@ details.adv .body{padding-top:8px; display:flex; flex-direction:column; gap:7px}
           <label class="toggle"><input type="checkbox" id="showRange" checked> Радіус</label>
           <button id="btnVerify">Перевірити детермінізм</button>
         </div>
+      </div>
+
+      <div class="mateBoard" id="mateBoard" hidden>
+        <div class="bar">
+          <b>Лінія напарника</b>
+          <span class="sep">
+            <span>хвиля <span id="mbWave">—</span></span>
+            <span>життя <span id="mbLives">—</span></span>
+            <span>золото <span id="mbGold">—</span></span>
+          </span>
+        </div>
+        <canvas id="cvMate"></canvas>
       </div>
 
       <div class="aside">
@@ -1081,7 +1109,7 @@ const ICE = { iceServers: [
    що мовчав, хоча ICE був connected. */
 const CHAN = { ordered: true, negotiated: true, id: 0 };
 
-const BUILD = '2026-08-23p';
+const BUILD = '2026-08-24a';
 
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
@@ -1489,6 +1517,8 @@ class Lockstep {
    ══════════════════════════════════════════════════════════════════════ */
 const cv  = document.getElementById('cv');
 const ctx = cv.getContext('2d');
+const cvMate  = document.getElementById('cvMate');
+const ctxMate = cvMate.getContext('2d');
 const css = getComputedStyle(document.documentElement);
 const C   = n => css.getPropertyValue(n).trim();
 
@@ -1517,6 +1547,9 @@ const el = {
   lobbyCopy: document.getElementById('btnLobbyCopy'),
   webhookUrl: document.getElementById('webhookUrl'), webhookTest: document.getElementById('btnWebhookTest'),
   webhookHint: document.getElementById('webhookHint'), downloadLog: document.getElementById('btnDownloadLog'),
+  duelField: document.getElementById('duelField'), duel: document.getElementById('duelToggle'),
+  mateBoard: document.getElementById('mateBoard'),
+  mbWave: document.getElementById('mbWave'), mbLives: document.getElementById('mbLives'), mbGold: document.getElementById('mbGold'),
 };
 
 MAPS.forEach((m, i) => {
@@ -1525,12 +1558,12 @@ MAPS.forEach((m, i) => {
   el.mapSel.appendChild(o);
 });
 
-let sim, ls, tool = TOOLS[1], paused = false, speed = 1;
+let sim, ls, simMate = null, mateOverSaid = false, lobbyPreview = null, tool = TOOLS[1], paused = false, speed = 1;
 let hoverX = -1, hoverY = -1, acc = 0, last = 0;
 let fx = [], looping = false, stalled = false, desync = null;
 
 let net = new Net();
-const myHash = new Map(), theirHash = new Map();
+const myHash = new Map(), theirHash = new Map(), myMateHash = new Map();
 
 /* Номер покоління партії. Після перезапуску він росте, і команди зі
    старої партії, що ще летять каналом, не потраплять у нову. */
@@ -1545,21 +1578,42 @@ let gameStarted = false;
 let lobbyCfgSeq = 0;      // росте щоразу, як хост міняє налаштування в лобі
 let guestReadySeq = -1;   // на яку версію налаштувань гість уже підтвердив готовність
 
-/* Між натисканням «Застосувати» і першим спільним стартом гість уже має
-   номер 1, а симуляція в нього ще однокористувацька — гравця з таким
-   номером там немає. Раніше це валило цикл назавжди. */
+/* «Кожен сам за себе»: у мене й напарника окремі Sim (кожна — сольна
+   дошка), а не спільна на двох. Тому індекс гравця має два різні сенси,
+   які легко переплутати:
+     netP() — МЕРЕЖЕВИЙ тег (0/1), куди маршрутизувати команду ДО
+              застосування — не залежить від розміру жодної дошки.
+     meId() — індекс «себе» ВСЕРЕДИНІ моєї дошки: net.me у класичному
+              коопі (спільна дошка на двох), завжди 0 у дуелі (моя дошка
+              сольна) чи в соло. Саме meId() читає sim.players[...] і
+              звіряється з подіями Sim. */
+let duelBoards = false;
+const netP = () => (net.solo ? 0 : net.me);
 const meId = () => {
-  const i = net.solo ? 0 : net.me;
+  if (duelBoards) return 0;
+  const i = netP();
+  /* Між натисканням «Застосувати» і першим спільним стартом гість уже має
+     номер 1, а симуляція в нього ще однокористувацька — гравця з таким
+     номером там немає. Раніше це валило цикл назавжди. */
   return (sim && sim.players && i < sim.players.length) ? i : 0;
 };
 
 function boot(g) {
   if (g !== undefined) gen = g;
   const n = net.solo ? 1 : 2;
-  sim = new Sim(el.seed.value || 'MAZE-01', parseInt(el.diff.value, 10), n,
-                parseInt(el.mapSel.value, 10), parseInt(el.modeSel.value, 10));
+  const seed = el.seed.value || 'MAZE-01', diff = parseInt(el.diff.value, 10);
+  const mapIdx = parseInt(el.mapSel.value, 10), mode = parseInt(el.modeSel.value, 10);
+  duelBoards = n > 1 && mode === MODE_FIXED && el.duel.checked;
+
+  /* У дуелі кожен грає на сольній дошці (своя лінія, своє HP) — не на
+     спільній двомісній. Обидві дошки на однаковому сіді, тож хвилі
+     й баунті-роли ідентичні на обох — чесне порівняння «хто краще». */
+  sim = new Sim(seed, diff, duelBoards ? 1 : n, mapIdx, mode);
+  simMate = duelBoards ? new Sim(seed, diff, 1, mapIdx, mode) : null;
+  mateOverSaid = false;
+
   ls  = new Lockstep(n, gen, stash);
-  myHash.clear(); theirHash.clear();
+  myHash.clear(); theirHash.clear(); myMateHash.clear();
   fx = []; paused = false; acc = 0; last = 0; stalled = false; desync = null;
   inLobby = false;
   resetStats();
@@ -1567,14 +1621,18 @@ function boot(g) {
   el.veil.hidden = true;
   el.log.innerHTML = '';
   say((n > 1 ? 'Кооп, гравець ' + (net.me + 1) + ' · ' : 'Забіг · ') + sim.map.name + ' · ' +
-      (sim.mode === MODE_FIXED ? 'фіксований шлях' : 'лабіринт') + ' · сід ' + sim.seedStr, 'note');
+      (sim.mode === MODE_FIXED ? 'фіксований шлях' : 'лабіринт') + ' · сід ' + sim.seedStr +
+      (duelBoards ? ' · кожен на своїй лінії' : ''), 'note');
   el.mapNote.textContent = sim.mode === MODE_FIXED
     ? sim.map.note + ' · ' + sim.pathLength() + ' клітин'
     : 'лабіринт: трасу будуєш сам, скелі не забудовуються';
-  el.sMate.hidden = n < 2;
+  el.sMate.hidden = n < 2 || duelBoards;
+  el.mateBoard.hidden = !duelBoards;
+  el.mateBoard.classList.remove('over');
   refreshHostLocks();
   drawRail();
   if (!looping) { looping = true; requestAnimationFrame(frame); }
+  resize();
 }
 
 /* ── арсенал ─────────────────────────────────────────────────────────── */
@@ -1643,7 +1701,7 @@ function say(text, cls) {
 /* ── ввід ────────────────────────────────────────────────────────────── */
 function enqueue(cmd) {
   if (!sim || sim.over || desync || (!net.solo && inLobby)) return;
-  cmd.p = meId();
+  cmd.p = netP();     // мережевий тег — розсортовується по дошках ДО sim.step()
   ls.queue(cmd);
 }
 function tileAt(ev) {
@@ -1694,13 +1752,27 @@ function cycleSpeed() {
 const readSetup = () => ({
   seed: el.seed.value || 'MAZE-01', diff: parseInt(el.diff.value, 10),
   map: parseInt(el.mapSel.value, 10), mode: parseInt(el.modeSel.value, 10),
+  duel: duelAllowed() && el.duel.checked,
 });
 function writeSetup(s) {
   if (!s) return;
   el.seed.value = s.seed; el.diff.value = String(s.diff);
   el.mapSel.value = String(s.map | 0); el.modeSel.value = String(s.mode | 0);
+  el.duel.checked = !!s.duel;
+  updateDuelAvailability();
 }
 function randomSeed() { return 'S' + Math.random().toString(36).slice(2, 8).toUpperCase(); }
+
+/* «Кожен сам за себе» має сенс лише в коопі на фіксованому шляху — своя
+   лінія в лабіринті означала б подвоєння всього поля, окрема історія. */
+function duelAllowed() {
+  return !net.solo && parseInt(el.modeSel.value, 10) === MODE_FIXED;
+}
+function updateDuelAvailability() {
+  const ok = duelAllowed();
+  el.duelField.classList.toggle('na', !ok);
+  if (!ok) el.duel.checked = false;
+}
 
 /* Гість ніколи не крутить налаштування. Хост — тільки поки в лобі: під
    час бою чи екрана результатів поля заблоковані, щоб випадкова зміна
@@ -1710,8 +1782,10 @@ function refreshHostLocks() {
   const midGame = !net.solo && !inLobby;
   const locked = guestSide || midGame;
   for (const c of [el.seed, el.diff, el.mapSel, el.modeSel]) c.disabled = locked;
+  el.duel.disabled = locked || !duelAllowed();
   el.restart.disabled = guestSide;
   el.pause.disabled = guestSide;
+  updateDuelAvailability();
 }
 
 /* ── лобі: хост крутить налаштування, гість тисне «Готовий» ─────────────
@@ -1725,7 +1799,21 @@ function lobbyText() {
   const m = MAPS[parseInt(el.mapSel.value, 10)] || MAPS[0];
   const modeName = parseInt(el.modeSel.value, 10) === MODE_FIXED ? 'фіксований шлях' : 'лабіринт';
   const diffName = el.diff.options[el.diff.selectedIndex].text;
-  return m.name + ' · ' + modeName + ' · складність ' + diffName + ' · сід ' + (el.seed.value || 'MAZE-01');
+  return m.name + ' · ' + modeName + ' · складність ' + diffName + ' · сід ' + (el.seed.value || 'MAZE-01') +
+    (duelAllowed() && el.duel.checked ? ' · кожен на своїй лінії' : '');
+}
+/* Фон лобі — не просто напис із назвою мапи, а сама мапа: терен, траса,
+   вхід/вихід під напівпрозорою шторкою. Дешева одноразова Sim без хвиль,
+   перебудовується лише коли справді змінились мапа чи режим. */
+function renderLobbyBackdrop() {
+  const mapIdx = parseInt(el.mapSel.value, 10), mode = parseInt(el.modeSel.value, 10);
+  if (!lobbyPreview || lobbyPreview.mapIdx !== mapIdx || lobbyPreview.mode !== mode) {
+    lobbyPreview = new Sim('LOBBY', 100, 1, mapIdx, mode);
+  }
+  const real = sim;
+  sim = lobbyPreview;      // тимчасова підміна: render() малює те, що дали
+  render(1);
+  sim = real;
 }
 function renderLobby() {
   if (net.solo || !inLobby) return;
@@ -1782,6 +1870,7 @@ function guestSendReady() {
   renderLobby();
 }
 function onHeaderChange() {
+  updateDuelAvailability();     // зміна режиму могла зробити «сам за себе» недоступним
   if (net.solo) { boot(); return; }
   if (net.me !== 0) return;
   if (inLobby) hostSendCfg();
@@ -1795,6 +1884,7 @@ el.seed.onchange = onHeaderChange;
 el.diff.onchange = onHeaderChange;
 el.mapSel.onchange = onHeaderChange;
 el.modeSel.onchange = onHeaderChange;
+el.duel.onchange = onHeaderChange;
 
 /* ── перевірка детермінізму ──────────────────────────────────────────── */
 el.verify.onclick = () => {
@@ -2063,7 +2153,11 @@ function frameBody(now) {
      чекаємо напарника, крутимо як соло — при з'єднанні все одно почнеться
      наново з тіку 0. Раніше тут стояла умова, від якої гра завмирала
      одразу після натискання «Створити гру». */
-  if (sim && !sim.over && !desync && (net.solo || !inLobby)) {
+  /* У дуелі моя дошка може завершитись раніше за дошку напарника — тікати
+     маємо, поки жива БУДЬ-ЯКА з двох, інакше мій клієнт перестає слати
+     навіть порожні пакети, і напарник зависає, чекаючи мене назавжди. */
+  const anyoneAlive = !sim.over || (duelBoards && simMate && !simMate.over);
+  if (sim && anyoneAlive && !desync && (net.solo || !inLobby)) {
     acc += dt * (sim.frozen ? 1 : speed);
     let guard = 0;
     stalled = false;
@@ -2073,25 +2167,40 @@ function frameBody(now) {
       ls.publishTo(sim.tick + DELAY, sender);
       if (!ls.ready(sim.tick, wired)) { stalled = true; break; }
       acc -= stepMs;
-      sim.step(ls.merged(sim.tick));
+      const merged = ls.merged(sim.tick);
+      if (duelBoards) {
+        const my = netP();
+        sim.step((merged || []).filter(c => c.p === my).map(c => Object.assign({}, c, { p:0 })));
+        simMate.step((merged || []).filter(c => c.p !== my).map(c => Object.assign({}, c, { p:0 })));
+        digestMate();
+      } else {
+        sim.step(merged);
+      }
       digest();
       if (wired && sim.tick % 60 === 0) {
         const h = sim.hash();
         myHash.set(sim.tick, h);
         net.send({ t:'h', g:gen, k:sim.tick, h });
+        if (duelBoards) myMateHash.set(sim.tick, simMate.hash());
         compareHash(sim.tick);
       }
     }
     if (stalled && acc > stepMs * 3) acc = stepMs * 3;   // не копимо борг, поки чекаємо
   }
-  render(sim.frozen || sim.over ? 1 : Math.min(1, acc / stepMs));
+  if (!net.solo && inLobby) renderLobbyBackdrop();
+  else render(sim.frozen || sim.over ? 1 : Math.min(1, acc / stepMs));
+  if (duelBoards) renderMate();
   hud();
 }
 
+/* Класика: обидва боки бачать ОДНУ дошку, і a/b — просто мій/чужий хеш
+   ТІЄЇ дошки. У дуелі peer шле хеш СВОЄЇ дошки (theirHash) — звіряємо
+   його з МОЇМ локальним підрахунком дошки напарника (myMateHash), а не
+   з моєю власною. Кожен клієнт так перевіряє «не свою» половину; разом
+   обидві дошки лишаються під контролем. */
 function compareHash(t) {
-  const a = myHash.get(t), b = theirHash.get(t);
-  if (!a || !b || a === b) return;
-  desync = { t, a, b };
+  const a = duelBoards ? myMateHash.get(t) : myHash.get(t);
+  const b = theirHash.get(t);
   say('ДЕСИНК на тіку ' + t + ': ' + a + ' ≠ ' + b, 'bad');
   el.veil.hidden = false;
   el.veil.className = 'veil lost';
@@ -2131,12 +2240,26 @@ function digest() {
   for (const f of fx) f.life--;
   fx = fx.filter(f => f.life > 0);
 }
+
+/* Мінідошка напарника: жодних спалахів чи детального журналу, лише
+   повідомити раз, коли його лінія впала. Малюнок читає simMate напряму
+   щокадру — окремий дайджест подій для мініатюри зайвий. */
+function digestMate() {
+  if (simMate.over && !mateOverSaid) {
+    mateOverSaid = true;
+    say('Лінія напарника впала на хвилі ' + (simMate.wave - 1), 'bad');
+    el.mateBoard.classList.add('over');
+  }
+}
 function showLost() {
   el.veil.hidden = false;
   el.veil.className = 'veil lost';
   el.veilReady.hidden = true;
   el.veilT.textContent = 'Оборону зламано';
-  const base = 'Витримано хвиль: ' + (sim.wave - 1) + ' · сід ' + sim.seedStr;
+  const mateNote = duelBoards && simMate
+    ? (simMate.over ? ' · напарник теж упав, хвиля ' + (simMate.wave - 1) : ' · напарник ще тримається, хвиля ' + simMate.wave)
+    : '';
+  const base = 'Витримано хвиль: ' + (sim.wave - 1) + ' · сід ' + sim.seedStr + mateNote;
   if (net.solo) {
     el.veilX.textContent = base;
     el.veilB.hidden = false; el.veilB.disabled = false;
@@ -2169,6 +2292,8 @@ function reportGame() {
     wave: sim.wave - 1, durationSec: Math.round(sim.tick / TPS),
     stats: Object.assign({}, stats),
     finalGold: sim.players.map(p => p.gold),
+    duel: duelBoards,
+    mateWave: (duelBoards && simMate) ? simMate.wave - 1 : null,
   };
   gameLog.push(entry);
   const url = (localStorage.getItem('cp_webhook') || '').trim();
@@ -2185,7 +2310,8 @@ function discordPayload(e) {
     color: 0xE0574A,
     fields: [
       { name:'Мапа',           value: e.map + ' · ' + (e.mode === 'fixed' ? 'фіксований шлях' : 'лабіринт'), inline:true },
-      { name:'Роль',           value: roleName + (e.players > 1 ? ' (кооп)' : ' (соло)'), inline:true },
+      { name:'Роль',           value: roleName + (e.duel ? ' (дуель)' : e.players > 1 ? ' (кооп)' : ' (соло)') +
+        (e.duel && e.mateWave !== null ? ', напарник до хвилі ' + e.mateWave : ''), inline:true },
       { name:'Хвиля',          value: String(e.wave), inline:true },
       { name:'Тривалість',     value: dur, inline:true },
       { name:'Складність',     value: e.diff + '%', inline:true },
@@ -2204,6 +2330,11 @@ function hud() {
   el.lives.className   = 'v' + (sim.lives <= 5 ? ' warn' : '');
   el.gold.textContent  = sim.players[me].gold;
   if (sim.players.length > 1) el.mate.textContent = sim.players[1 - me].gold;
+  if (duelBoards && simMate) {
+    el.mbWave.textContent  = simMate.over ? (simMate.wave - 1) + ' (кінець)' : simMate.wave;
+    el.mbLives.textContent = simMate.lives;
+    el.mbGold.textContent  = simMate.players[0].gold;
+  }
   el.path.innerHTML    = sim.pathLength() + '<small> кл.</small>';
   const nx = sim.nextInfo();
   el.next.textContent  = KIND_NAME[nx.kind] + ' ×' + nx.n + (nx.boss ? ' + супровід' : '');
@@ -2223,7 +2354,7 @@ function hud() {
 }
 
 /* ── малювання ───────────────────────────────────────────────────────── */
-let TS = 32;
+let TS = 32, TSm = 12;
 function resize() {
   const w = cv.parentElement.clientWidth;
   TS = Math.max(14, (w / GW) | 0);
@@ -2233,8 +2364,60 @@ function resize() {
   cv.height = Math.round(GH * TS * dpr);
   cv.style.aspectRatio = GW + ' / ' + GH;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  if (!el.mateBoard.hidden) {
+    const wm = cvMate.parentElement.clientWidth;
+    TSm = Math.max(6, (wm / GW) | 0);
+    cvMate.style.width = '100%';
+    cvMate.width  = Math.round(GW * TSm * dpr);
+    cvMate.height = Math.round(GH * TSm * dpr);
+    cvMate.style.aspectRatio = GW + ' / ' + GH;
+    ctxMate.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
 }
 addEventListener('resize', resize);
+
+/* Спрощена мінідошка напарника: без ефектів, без ховера, без наведення
+   прицілу — лише терен, траса, башти й крипи. Дає відчуття гонки, не
+   дублює всю графіку основної дошки. */
+function renderMate() {
+  if (!simMate) return;
+  const ts = TSm, W = GW * ts, H = GH * ts;
+  ctxMate.fillStyle = C('--ink-2'); ctxMate.fillRect(0, 0, W, H);
+
+  for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
+    const t = simMate.terrain[idx(x, y)];
+    if (t === 2 && simMate.mode === MODE_FIXED) {
+      ctxMate.fillStyle = 'rgba(87,160,190,.13)'; ctxMate.fillRect(x * ts, y * ts, ts, ts);
+    } else if (t === 1) {
+      ctxMate.fillStyle = '#0A0F13'; ctxMate.fillRect(x * ts, y * ts, ts, ts);
+    }
+  }
+
+  if (simMate.mode === MODE_FIXED) {
+    const pts = simMate.route.map(i => [i % GW, (i / GW) | 0]);
+    ctxMate.strokeStyle = 'rgba(87,160,190,.3)'; ctxMate.lineWidth = Math.max(1.5, ts * .14);
+    ctxMate.lineJoin = ctxMate.lineCap = 'round';
+    ctxMate.beginPath();
+    pts.forEach(([px, py], i) => { const cx = px * ts + ts / 2, cy = py * ts + ts / 2; i ? ctxMate.lineTo(cx, cy) : ctxMate.moveTo(cx, cy); });
+    ctxMate.stroke();
+  }
+
+  ctxMate.globalAlpha = .5;
+  ctxMate.fillStyle = C('--coral'); ctxMate.fillRect(simMate.sx * ts, simMate.sy * ts, ts, ts);
+  ctxMate.fillStyle = C('--moss');  ctxMate.fillRect(simMate.gx * ts, simMate.gy * ts, ts, ts);
+  ctxMate.globalAlpha = 1;
+
+  for (const t of simMate.towers) {
+    ctxMate.fillStyle = C(TOOL_BY_KEY[t.k].swatch);
+    ctxMate.fillRect(t.x * ts + ts * .15, t.y * ts + ts * .15, ts * .7, ts * .7);
+  }
+  for (const c of simMate.creeps) {
+    const x = c.x / SUB * ts, y = c.y / SUB * ts;
+    ctxMate.fillStyle = c.kind === 3 ? C('--coral') : c.kind === 2 ? C('--brass') : C('--violet');
+    ctxMate.beginPath(); ctxMate.arc(x, y, Math.max(1.4, ts * .16), 0, 6.2832); ctxMate.fill();
+  }
+}
 
 function render(alpha) {
   const W = GW * TS, H = GH * TS;
@@ -2490,6 +2673,8 @@ el.coopDiag.textContent = 'вікно №' + net.myId + ' · версія ' + BU
 autoJoinFromLink();   // ?room=... у посиланні — після boot(), щоб не змішати solo зі стартом коопу
 window.CHOKEPOINT = {
   get sim() { return sim; }, get ls() { return ls; }, get net() { return net; },
+  get simMate() { return simMate; }, get duelBoards() { return duelBoards; },
+  get inLobby() { return inLobby; },
   Sim, Lockstep, Net, PeerNet, BUILD,
 };
 </script>

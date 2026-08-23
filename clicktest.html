@@ -54,6 +54,14 @@ window.addEventListener('load', async () => {
                      'veilBtn2','veilReady'])
     check('є елемент #' + id, !!d.getElementById(id));
 
+  /* 0ґ. «Кожен на своїй лінії» — елементи й стан спокою в соло. */
+  for (const id of ['duelField','duelToggle','mateBoard','cvMate','mbWave','mbLives','mbGold'])
+    check('є елемент #' + id, !!d.getElementById(id));
+  check('у соло duelBoards вимкнений', w.CHOKEPOINT.duelBoards === false);
+  check('у соло simMate відсутній', w.CHOKEPOINT.simMate === null);
+  const duelCb = d.getElementById('duelToggle');
+  check('тумблер дуелі неактивний у соло (немає з ким)', duelCb.disabled === true || d.getElementById('duelField').className.indexOf('na') >= 0);
+
   /* 0б. Гість щойно приєднався: номер гравця вже 1, а симуляція ще
          однокористувацька. Саме тут цикл падав на sim.players[1].gold. */
   errs.length = 0;
