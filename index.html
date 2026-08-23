@@ -262,6 +262,7 @@ table.roster tr:first-child td{color:var(--text)}
   <div class="readout">
     <div class="stat"><div class="k">Хвиля</div><div class="v" id="rWave">0</div></div>
     <div class="stat"><div class="k">Життя</div><div class="v" id="rLives">20</div></div>
+    <div class="stat"><div class="k">Золото</div><div class="v gold" id="rGold">0</div></div>
     <div class="stat"><div class="k">Наступна хвиля</div><div class="v" id="rNext" style="font-size:15px">—</div></div>
   </div>
 
@@ -271,7 +272,7 @@ table.roster tr:first-child td{color:var(--text)}
       <span class="swatches" id="mySwatches"></span>
     </div>
     <table class="roster">
-      <thead><tr><th></th><th>Гравець</th><th>Вбито</th><th>Шкода</th><th>Золото</th><th>HP</th><th>Веж</th></tr></thead>
+      <thead><tr><th></th><th>Гравець</th><th>HP</th><th>Золото</th><th>Вбито</th><th>Веж</th><th>Шкода</th></tr></thead>
       <tbody id="rosterBody"></tbody>
     </table>
   </div>
@@ -1149,7 +1150,7 @@ const ICE = { iceServers: [
    що мовчав, хоча ICE був connected. */
 const CHAN = { ordered: true, negotiated: true, id: 0 };
 
-const BUILD = '2026-08-24e';
+const BUILD = '2026-08-24f';
 
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
@@ -1568,6 +1569,7 @@ const C   = n => css.getPropertyValue(n).trim();
 
 const el = {
   wave:  document.getElementById('rWave'),  lives: document.getElementById('rLives'),
+  gold:  document.getElementById('rGold'),
   log:   document.getElementById('log'),    rail:  document.getElementById('rail'),
   veil:  document.getElementById('veil'),   veilT: document.getElementById('veilTitle'),
   veilX: document.getElementById('veilText'), veilB: document.getElementById('veilBtn'),
@@ -1690,6 +1692,13 @@ PALETTE.forEach(sw => {
 });
 
 let duelBoards = false;
+/* У дуелі скіп хвилі теж рішення двох, не одного — кожна дошка сама по
+   собі сольна (nPlayers=1), тож без цього набору голос одного миттєво
+   зрушував ОБИДВІ дошки (глобальна маршрутизація 'wave' з попереднього
+   фіксу). Набір рахується з merged — він однаковий в обох клієнтів
+   лок-степом, тож рахунок голосів лишається детермінованим без
+   окремого мережевого повідомлення. */
+let duelWaveVotes = new Set();
 const netP = () => (net.solo ? 0 : net.me);
 const meId = () => {
   if (duelBoards) return 0;
@@ -1713,6 +1722,7 @@ function boot(g) {
   sim = new Sim(seed, diff, duelBoards ? 1 : n, mapIdx, mode);
   simMate = duelBoards ? new Sim(seed, diff, 1, mapIdx, mode) : null;
   mateOverSaid = false;
+  duelWaveVotes.clear();
 
   ls  = new Lockstep(n, gen, stash);
   myHash.clear(); theirHash.clear(); myMateHash.clear();
@@ -2296,13 +2306,28 @@ function frameBody(now) {
       acc -= stepMs;
       const merged = ls.merged(sim.tick);
       if (duelBoards) {
-        // Пауза й виклик хвилі — не «моя половина проти твоєї», а спільний
-        // контроль над матчем: пауза від будь-кого мусить зупинити ОБИДВІ
-        // дошки, інакше один сидить у меню, поки в іншого йде бій.
+        // Пауза — спільний контроль над матчем: від будь-кого мусить
+        // зупинити ОБИДВІ дошки, інакше один сидить у меню, поки в
+        // іншого йде бій. Виклик хвилі — окремо: сирі команди 'wave'
+        // НІКОЛИ не йдуть напряму (кожна дошка сама по собі nPlayers=1,
+        // тож миттєво зрушила б лише себе) — голоси збираються тут, і
+        // лише коли проголосували обидва, обом дошкам підкидається один
+        // синтетичний 'wave' одночасно.
         const my = netP();
-        const globalCmd = c => c.t === 'freeze' || c.t === 'wave';
-        sim.step((merged || []).filter(c => c.p === my || globalCmd(c)).map(c => Object.assign({}, c, { p:0 })));
-        simMate.step((merged || []).filter(c => c.p !== my || globalCmd(c)).map(c => Object.assign({}, c, { p:0 })));
+        const isFreeze = c => c.t === 'freeze';
+        // 'wave' завжди виключений із звичайної маршрутизації — інакше
+        // власний голос проходив би на СВОЮ дошку одразу через гілку
+        // c.p===my, оминаючи чекання на другий голос.
+        const mine  = (merged || []).filter(c => c.t !== 'wave' && (c.p === my || isFreeze(c))).map(c => Object.assign({}, c, { p:0 }));
+        const mates = (merged || []).filter(c => c.t !== 'wave' && (c.p !== my || isFreeze(c))).map(c => Object.assign({}, c, { p:0 }));
+        for (const c of (merged || [])) if (c.t === 'wave') duelWaveVotes.add(c.p);
+        if (duelWaveVotes.size >= 2) {
+          duelWaveVotes.clear();
+          mine.push({ t:'wave', p:0 });
+          mates.push({ t:'wave', p:0 });
+        }
+        sim.step(mine);
+        simMate.step(mates);
         digestMate();
       } else {
         sim.step(merged);
@@ -2491,8 +2516,8 @@ function renderRoster() {
     const id = identFor(r.p);
     return '<tr><td><span class="dot" style="background:' + C(paletteCss(id.color)) + '"></span></td>' +
       '<td>' + escapeHtml(identName(r.p)) + '</td>' +
-      '<td>' + r.kills + '</td><td>' + r.dmg + '</td><td>' + r.gold + '</td>' +
-      '<td>' + r.hp + '</td><td>' + r.towers + '</td></tr>';
+      '<td>' + r.hp + '</td><td>' + r.gold + '</td>' +
+      '<td>' + r.kills + '</td><td>' + r.towers + '</td><td>' + r.dmg + '</td></tr>';
   }).join('');
 }
 
@@ -2501,6 +2526,7 @@ function hud() {
   el.wave.textContent  = sim.wave;
   el.lives.textContent = sim.lives;
   el.lives.className   = 'v' + (sim.lives <= 5 ? ' warn' : '');
+  el.gold.textContent  = sim.players[meId()].gold;
   if (duelBoards && simMate) {
     el.mbWave.textContent  = simMate.over ? (simMate.wave - 1) + ' (кінець)' : simMate.wave;
     el.mbLives.textContent = simMate.lives;
@@ -2509,12 +2535,18 @@ function hud() {
   const nx = sim.nextInfo();
   el.next.textContent  = KIND_NAME[nx.kind] + ' ×' + nx.n + (nx.boss ? ' + супровід' : '');
   el.next.className    = 'v' + (nx.kind === 3 ? ' warn' : nx.kind === 2 ? ' calm' : '');
+  // У дуелі голоси рахує duelWaveVotes (два реальні гравці), а не
+  // sim.waveVotes — та дошка сама по собі сольна (nPlayers=1) і бачить
+  // 'wave' лише вже узгодженим, тож ніколи не показала б «чекаю».
+  const votes = duelBoards ? duelWaveVotes : sim.waveVotes;
+  const voteOf = duelBoards ? netP() : meId();
+  const voteTotal = duelBoards ? 2 : sim.nPlayers;
   el.wave_.textContent = stalled ? 'Чекаю напарника…'
     : sim.phase !== 0 ? 'Хвиля ' + sim.wave + ' іде'
-    : sim.waveVotes.size > 0
-      ? (sim.waveVotes.has(meId()) ? 'Чекаю голосів' : 'Прискорити') + ' (' + sim.waveVotes.size + '/' + sim.nPlayers + ')'
+    : votes.size > 0
+      ? (votes.has(voteOf) ? 'Чекаю голосів' : 'Прискорити') + ' (' + votes.size + '/' + voteTotal + ')'
       : 'Хвиля ' + (sim.wave + 1) + ' за ' + Math.ceil(sim.prep / TPS) + ' с';
-  el.wave_.disabled = sim.phase !== 0 || stalled || sim.waveVotes.has(meId());
+  el.wave_.disabled = sim.phase !== 0 || stalled || votes.has(voteOf);
   if (!net.solo && net.onDiag) net.onDiag();   // діагностика жива й до з'єднання
   if (net.live) {
     el.netState.innerHTML = '<span class="dot"></span>Гравець ' + (net.me + 1) +
