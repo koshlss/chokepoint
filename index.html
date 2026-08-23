@@ -388,7 +388,7 @@ const idx = (x, y) => y * GW + x;
 const BALANCE = {
   lives:      20,
   startGold:  500,
-  prepFirst:  25,   // с до першої хвилі
+  prepFirst:  45,   // с до першої хвилі — досить, щоб забудуватись не поспішаючи
   prepAfter:  18,   // с між хвилями
   /* Складність мапи вимірюється ПОКРИТТЯМ, а не довжиною: скільки кроків
      траси накриває кулак з 60 найкращих місць. Кути й перехрестя дають
@@ -570,6 +570,7 @@ class Sim {
     this.wave        = 0;
     this.phase       = 0;    // 0 = підготовка, 1 = хвиля йде
     this.prep        = TPS * BALANCE.prepFirst;
+    this.waveVotes   = new Set();  // хто вже готовий прискорити поточну підготовку
     this.queue       = [];
     this.toSpawn     = 0;
     this.spawnGap    = 0;
@@ -777,11 +778,19 @@ class Sim {
       this.events.push({ e:'freeze', p:cmd.p, v:this.frozen });
 
     } else if (cmd.t === 'wave') {
+      /* Прискорення — рішення всієї партії, не одного гравця: спільна
+         підготовка, спільний вихід із неї. Голос рахується, коли всі
+         nPlayers проголосували; сольно чи в дуелі (nPlayers завжди 1
+         на дошку) голос спрацьовує миттєво — нема з ким узгоджувати. */
       if (this.phase === 0 && this.wave < 999) {
-        const bonus = ((this.prep / TPS) | 0) * 3;
-        p.gold += bonus;
-        this.prep = 0;
-        if (bonus > 0) this.events.push({ e:'early', gold:bonus });
+        this.waveVotes.add(cmd.p);
+        this.events.push({ e:'vote', p:cmd.p, n:this.waveVotes.size, of:this.nPlayers });
+        if (this.waveVotes.size >= this.nPlayers) {
+          const bonus = ((this.prep / TPS) | 0) * 3;
+          for (const pl of this.players) pl.gold += bonus;   // ділиться на всіх, а не лише ініціатору
+          this.prep = 0;
+          if (bonus > 0) this.events.push({ e:'early', gold:bonus });
+        }
       }
     }
   }
@@ -857,6 +866,7 @@ class Sim {
         for (const t of this.towers) t.freshSpent = 0;
         this.phase = 0;
         this.prep  = TPS * BALANCE.prepAfter;
+        this.waveVotes.clear();
       }
     }
 
@@ -1024,7 +1034,7 @@ class Sim {
     // мапа й режим — теж у хеш: інакше розбіжність налаштувань лишалась би
     // непоміченою, поки не з'являться перші крипи
     mix(this.mapIdx); mix(this.mode); mix(this.diff); mix(this.cov);
-    mix(this.tick); mix(this.lives); mix(this.wave); mix(this.rng);
+    mix(this.tick); mix(this.lives); mix(this.wave); mix(this.rng); mix(this.waveVotes.size);
     for (const p of this.players) mix(p.gold);
     for (const t of this.towers) { mix(t.x); mix(t.y); mix(t.cd); mix(t.lvl); mix(t.aim); mix(t.k.charCodeAt(0)); }
     for (const c of this.creeps) { mix(c.id); mix(c.x); mix(c.y); mix(c.hp); mix(c.slowT); }
@@ -1109,7 +1119,7 @@ const ICE = { iceServers: [
    що мовчав, хоча ICE був connected. */
 const CHAN = { ordered: true, negotiated: true, id: 0 };
 
-const BUILD = '2026-08-24a';
+const BUILD = '2026-08-24b';
 
 const RTC = (typeof RTCPeerConnection === 'function') ? RTCPeerConnection
           : (typeof webkitRTCPeerConnection === 'function') ? webkitRTCPeerConnection
@@ -1130,7 +1140,7 @@ class Net {
     this.peerId = null;
     this.iceErr = 0;
     this.onCmds = null; this.onHash = null; this.onRestart = null; this.onState = null;
-    this.onDiag = null; this.onCfg = null; this.onReady = null;
+    this.onDiag = null; this.onCfg = null; this.onReady = null; this.onSpeed = null;
   }
   diag() {
     if (!this.pc) return 'з’єднання не почато';
@@ -1234,6 +1244,7 @@ class Net {
       else if (m.t === 'r' && this.onRestart) this.onRestart(m.g, m.s);
       else if (m.t === 'cfg' && this.onCfg) this.onCfg(m.s, m.seq);
       else if (m.t === 'ready' && this.onReady) this.onReady(m.seq);
+      else if (m.t === 'speed' && this.onSpeed) this.onSpeed(m.v);
       else if (m.t === 'hi') {
         this.peerBuild = m.b || '?'; this.peerId = m.w || null;
         this.send({ t:'hi2', b: BUILD, w: this.myId });
@@ -1332,7 +1343,7 @@ class PeerNet {
     this.evt = []; this.t0 = performance.now();
     this.peer = null; this.conn = null; this.roomCode = null; this.hiTimer = 0;
     this.onCmds = null; this.onHash = null; this.onRestart = null;
-    this.onState = null; this.onDiag = null; this.onCfg = null; this.onReady = null;
+    this.onState = null; this.onDiag = null; this.onCfg = null; this.onReady = null; this.onSpeed = null;
   }
   get live() { return this.state === 'live'; }
   get solo() { return this.state === 'off'; }
@@ -1745,9 +1756,23 @@ function togglePause() {
   el.pause.textContent = paused ? 'Далі' : 'Пауза';
   enqueue({ t:'freeze', v: paused ? 1 : 0 });
 }
+/* Швидкість — не ігрова логіка (крипи рухаються по тіках, а не по
+   секундах), тож не потребує лок-степу. Але щоб партія НЕ впиралась у
+   ЧЕКАЮ, обидва клієнти мають прискорюватись однаково — тому в коопі це
+   рішення хоста, розіслане легким мережевим повідомленням, а не
+   деталермінована команда. */
+const SPEED_STEPS = [0.5, 1, 1.5, 2, 3, 5, 10];
+function speedLabel(v) { return (v % 1 === 0 ? v : v.toFixed(1)) + '×'; }
+function setSpeed(v, broadcast) {
+  speed = v;
+  el.speed.textContent = speedLabel(v);
+  if (broadcast && net.live) net.send({ t:'speed', v: Math.round(v * 10) });
+}
 function cycleSpeed() {
-  if (net.live) { say('Швидкість фіксована в кооперативі', 'bad'); return; }
-  speed = speed === 1 ? 2 : speed === 2 ? 3 : 1; el.speed.textContent = speed + '×';
+  if (!net.solo && net.me !== 0) { say('Швидкість керує господар', 'bad'); return; }
+  const i = SPEED_STEPS.indexOf(speed);
+  const next = SPEED_STEPS[(i < 0 ? 1 : i + 1) % SPEED_STEPS.length];
+  setSpeed(next, true);
 }
 const readSetup = () => ({
   seed: el.seed.value || 'MAZE-01', diff: parseInt(el.diff.value, 10),
@@ -1785,6 +1810,7 @@ function refreshHostLocks() {
   el.duel.disabled = locked || !duelAllowed();
   el.restart.disabled = guestSide;
   el.pause.disabled = guestSide;
+  el.speed.disabled = guestSide;
   updateDuelAvailability();
 }
 
@@ -1928,6 +1954,7 @@ net.onCfg = (s, seq) => {
 net.onReady = seq => {
   if (seq === lobbyCfgSeq) { guestReadySeq = seq; renderLobby(); }
 };
+net.onSpeed = v => setSpeed(v / 10, false);   // прийняв від хоста — не відсилаю назад
 net.onRestart = (g, s) => {
   writeSetup(s);
   inLobby = false;
@@ -1957,7 +1984,7 @@ net.onState   = s => {
   el.netState.innerHTML = '<span class="dot"></span>' +
     (s === 'live' ? ('Гравець ' + (net.me + 1)) : s === 'waiting' ? 'Чекаю' : s === 'dead' ? 'Розрив' : s === 'stale' ? 'Немає відповіді' : 'Соло');
   if (s === 'live') {
-    paused = false; speed = 1; el.speed.textContent = '1×'; el.pause.textContent = 'Пауза';
+    paused = false; setSpeed(1, false); el.pause.textContent = 'Пауза';
     el.code.value = ''; el.roomLink.hidden = true;
     say('З’єднання встановлено', 'good');
     inLobby = true; guestReadySeq = -1; guestReadyLocal = false;
@@ -1993,6 +2020,7 @@ net.onState   = s => {
 function attachNet(n) {
   n.onCmds = net.onCmds; n.onHash = net.onHash; n.onRestart = net.onRestart;
   n.onState = net.onState; n.onDiag = net.onDiag; n.onCfg = net.onCfg; n.onReady = net.onReady;
+  n.onSpeed = net.onSpeed;
   net.reset();
   net = n;
 }
@@ -2230,7 +2258,8 @@ function digest() {
     else if (e.e === 'leak')  { stats.leaks++; say('Прорив! −' + e.dmg + ' життя', 'bad'); fx.push({ t:'ring', x:e.x, y:e.y, life:20, max:20, c:C('--coral') }); }
     else if (e.e === 'raze')  { if (e.p === meId()) { stats.razed++; say(e.full ? ('Знесено, повернено все: +' + e.gold) : ('Знесено зі штрафом: +' + e.gold), e.full ? 'good' : null); } }
     else if (e.e === 'deny')  { if (e.p === meId()) { stats.denied++; say('Не можна: ' + e.why, 'bad'); } }
-    else if (e.e === 'early') say('Достроково. +' + e.gold + ' зол.', 'good');
+    else if (e.e === 'early') say('Достроково. +' + e.gold + ' зол. усім', 'good');
+    else if (e.e === 'vote')  { if (e.of > 1 && e.n < e.of) say('Голос за прискорення: ' + e.n + '/' + e.of, 'note'); }
     else if (e.e === 'lost')  showLost();
     else if (e.e === 'boom')  fx.push({ t:'ring', x:e.x, y:e.y, life:12, max:12, c:C('--t-mortar'), r:e.r });
     else if (e.e === 'bounty'){ stats.bounty++; fx.push({ t:'spark', x:e.x, y:e.y, life:22, max:22, c:C('--brass') }); }
@@ -2342,9 +2371,11 @@ function hud() {
   el.tick.textContent  = sim.tick;
   el.hash.textContent  = sim.hash();
   el.wave_.textContent = stalled ? 'Чекаю напарника…'
-    : sim.phase === 0 ? 'Хвиля ' + (sim.wave + 1) + ' за ' + Math.ceil(sim.prep / TPS) + ' с'
-    : 'Хвиля ' + sim.wave + ' іде';
-  el.wave_.disabled = sim.phase !== 0 || stalled;
+    : sim.phase !== 0 ? 'Хвиля ' + sim.wave + ' іде'
+    : sim.waveVotes.size > 0
+      ? (sim.waveVotes.has(meId()) ? 'Чекаю голосів' : 'Прискорити') + ' (' + sim.waveVotes.size + '/' + sim.nPlayers + ')'
+      : 'Хвиля ' + (sim.wave + 1) + ' за ' + Math.ceil(sim.prep / TPS) + ' с';
+  el.wave_.disabled = sim.phase !== 0 || stalled || sim.waveVotes.has(meId());
   if (!net.solo && net.onDiag) net.onDiag();   // діагностика жива й до з'єднання
   if (net.live) {
     el.netState.innerHTML = '<span class="dot"></span>Гравець ' + (net.me + 1) +
