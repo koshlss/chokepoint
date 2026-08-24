@@ -9,8 +9,34 @@
 /** Стабільний ідентифікатор башти. Змінювати не можна — він у протоколі. */
 export type ToolKey = string;
 
+/** Лише для угруповання в інтерфейсі. Ядро це поле не читає — доступ
+ *  вирішує набір гравця, а не напис на башті. */
+export type FactionKey = 'any' | 'steel' | 'ice' | 'fire' | 'toxic';
+
+/* Рівень башти. Відкривається по ходу партії, однаково для всіх фракцій:
+   1 — з початку, 2 — з хвилі TIER_WAVE[2], 3 — з TIER_WAVE[3].
+
+   Паритет тримається ПОТИРНЕВО, а не сумарно. Це не педантизм: коли
+   гравець зможе поєднувати фракції, сумарний паритет дозволив би зібрати
+   «найкраще з кожної», а потирневий лишає вибір змістовним — башти того
+   самого рівня рівноцінні, різні лише способом. */
+export type Tier = 1 | 2 | 3;
+
+export const TIER_WAVE: Record<Tier, number> = { 1: 0, 2: 5, 3: 10 };
+
+export const TIER_NAME: Record<Tier, string> = { 1: 'базові', 2: 'середні', 3: 'топові' };
+
+/** Найвищий рівень, доступний на цій хвилі. */
+export function tierAt(wave: number): Tier {
+  if (wave >= TIER_WAVE[3]) return 3;
+  if (wave >= TIER_WAVE[2]) return 2;
+  return 1;
+}
+
 export interface Tool {
   key: ToolKey;
+  faction: FactionKey;
+  tier: Tier;
   name: string;
   cost: number;
   /** Шкода за постріл на 1-му рівні. */

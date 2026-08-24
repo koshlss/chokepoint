@@ -162,8 +162,13 @@ export function runOne(mapIdx: number, mode: number, seed: string, opts: RunOpts
       }
 
       if (!didUp) {
-        const tool = pickTool(placed);
-        if (tool && sim.players[0].gold >= tool.cost) {
+        /* Рівні відкриваються по ходу партії, тож із міксу беремо лише те,
+           що вже дозволено. Інакше бот уперся б у башту, яку ще не можна
+           ставити, і стенд міряв би відмови, а не баланс. */
+        let tool = pickTool(placed);
+        for (let k = 0; k < mix.length && (!tool || !sim.allows(0, tool.key)); k++)
+          tool = pickTool(placed + k + 1);
+        if (tool && sim.allows(0, tool.key) && sim.players[0].gold >= tool.cost) {
           const spot = bestSpot(sim, tool, path, scratch);
           if (spot >= 0) {
             const before = sim.towers.length;

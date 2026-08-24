@@ -19,12 +19,36 @@
   --violet:     #8E7BC0;
 
   --t-wall:   #55707E;
+
+  /* Сталь — тепла охра й мідь */
+  --t-shard:  #B08A5A;
   --t-arrow:  #E9A93C;
   --t-mortar: #C9732F;
-  --t-frost:  #57A0BE;
+  --t-rail:   #D8C08A;
+
+  /* Крига — від блідої паморозі до глибокої синяви */
+  --t-rime:    #9FD0E4;
+  --t-frost:   #57A0BE;
+  --t-glacier: #4E7FB8;
+  --t-hail:    #3E5F96;
+
+  /* Вогонь — від іскри до жару */
+  --t-ember:  #F0B24A;
+  --t-flamer: #E8792C;
+  --t-blaze:  #D9502A;
+  --t-pyre:   #A8321F;
+
+  /* Отрута — від спори до пошесті */
+  --t-spore:  #A8C46A;
   --t-venom:  #7FA53F;
-  --t-rail:   #8E7BC0;
-  --t-shard:  #B4553F;
+  --t-mire:   #5E7F3A;
+  --t-blight: #6E8F4E;
+
+  /* кольори фракцій для карток вибору */
+  --f-steel:  #E9A93C;
+  --f-ice:    #57A0BE;
+  --f-fire:   #D9502A;
+  --f-toxic:  #7FA53F;
 
   --display: "Bahnschrift","DIN Alternate","Roboto Condensed","Arial Narrow",system-ui,sans-serif;
   --mono: ui-monospace,"Cascadia Mono",Consolas,"DejaVu Sans Mono",monospace;

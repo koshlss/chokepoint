@@ -5,6 +5,7 @@ import { buildRoute, buildTerrain } from './pathing';
 import { MAPS } from '../content/maps';
 import { TOOL_BY_KEY, UPG, MAX_LVL, AIMS } from '../content/towers';
 import { ARMOR, waveSpec } from '../content/waves';
+import { tierAt, TIER_WAVE } from '../content/types';
 
 class Sim {
   arsenals: Set<string>[] | null;
@@ -219,9 +220,18 @@ class Sim {
   }
   towerAt(x, y) { return this.towers.find(t => t.x === x && t.y === y) || null; }
 
-  /* Чи дозволяє набір цього гравця ставити таку башту. Без наборів
-     (arsenals === null) дозволено все — рівно як до їх появи. */
+  /* Найвищий рівень башт, відкритий на поточній хвилі. Похідна від
+     sim.wave, тож детермінована й однакова в усіх без окремої синхронізації. */
+  tier() { return tierAt(this.wave); }
+
+  /* Чи дозволяє набір цього гравця ставити таку башту. Дві незалежні
+     умови: башта має бути у фракції гравця І її рівень має бути вже
+     відкритий. Без наборів (arsenals === null) фракція не обмежує —
+     але рівні відкриваються все одно, це загальне правило партії. */
   allows(p: number, key: string): boolean {
+    const tool = TOOL_BY_KEY[key];
+    if (!tool) return false;
+    if (tool.tier > this.tier()) return false;
     if (!this.arsenals) return true;
     const a = this.arsenals[p] || this.arsenals[0];
     return a ? a.has(key) : true;
@@ -247,7 +257,15 @@ class Sim {
     if (cmd.t === 'build') {
       const tool = TOOL_BY_KEY[cmd.k];
       if (!tool || !this.buildable(cmd.x, cmd.y)) { this.events.push({ e:'deny', p:cmd.p, why:'зайнято' }); return; }
-      if (!this.allows(cmd.p, cmd.k)) { this.events.push({ e:'deny', p:cmd.p, why:'не в наборі' }); return; }
+      if (!this.allows(cmd.p, cmd.k)) {
+        // причину розрізняємо, бо це різні поради гравцю: одне — «не твоя
+        // фракція», інше — «ще зарано, чекай хвилі»
+        const why = tool.tier > this.tier()
+          ? 'рівень ' + tool.tier + ' з хвилі ' + TIER_WAVE[tool.tier]
+          : 'не у твоїй фракції';
+        this.events.push({ e:'deny', p:cmd.p, why });
+        return;
+      }
       if (p.gold < tool.cost) { this.events.push({ e:'deny', p:cmd.p, why:'мало золота' }); return; }
 
       const i = idx(cmd.x, cmd.y);
@@ -535,6 +553,28 @@ class Sim {
     }
   }
 
+  /* Накладає ефекти пострілу на крипа.
+
+     Беремо СИЛЬНІШЕ, а не останнє. Раніше кожне влучання перезаписувало
+     ефект, тож дешева башта, вистріливши після важкої, знижувала отруту
+     чи сповільнення — набір воював сам із собою, і що більше веж, то
+     гірше. Тривалість натомість завжди оновлюється: свіже влучання
+     продовжує дію.
+
+     Ефекти цілочисельні й порядок обходу сталий, тож детермінізм
+     зберігається. */
+  affect(c, s) {
+    if (s.slow > 0) {
+      if (s.slow >= c.slowP || c.slowT <= 0) c.slowP = s.slow;
+      if (s.slowT > c.slowT) c.slowT = s.slowT;
+    }
+    if (s.dot > 0) {
+      if (s.dot >= c.dotD || c.dotT <= 0) c.dotD = s.dot;
+      if (s.dotT > c.dotT) c.dotT = s.dotT;
+      if (c.dotCd <= 0) c.dotCd = 15;
+    }
+  }
+
   impact(s, tgt) {
     this.events.push({ e:'hit', x:s.x, y:s.y, k:s.k });
     if (s.splash > 0) {
@@ -545,11 +585,13 @@ class Sim {
         if (dx * dx + dy * dy <= r2) hitList.push(c);
       }
       hitList.sort((a, b) => a.id - b.id);       // сталий порядок = сталий результат
-      for (const c of hitList) this.hurt(c, s.dmg, s.owner);
+      /* Вибух накладає свої ефекти на все, що зачепив. Доти сповільнення
+         й отрута жили лише в одиночній гілці, тож будь-яка башта з площею
+         І ефектом мовчки не давала ефекту зовсім. */
+      for (const c of hitList) { this.affect(c, s); this.hurt(c, s.dmg, s.owner); }
       this.events.push({ e:'boom', x:s.x, y:s.y, r:s.splash });
     } else {
-      if (s.slow > 0) { tgt.slowP = s.slow; tgt.slowT = s.slowT; }
-      if (s.dot > 0)  { tgt.dotD = s.dot; tgt.dotT = s.dotT; if (tgt.dotCd <= 0) tgt.dotCd = 15; }
+      this.affect(tgt, s);
       this.hurt(tgt, s.dmg, s.owner);
     }
   }

@@ -53,10 +53,14 @@ it('баланс наборів арсеналу', () => {
     const mix = mixFor(lo.tools);
     if (!mix.length) continue;
     const rs: RunResult[] = [];
-    for (let map = 0; map < MAPS.length; map++)
+    for (let map = 0; map < MAPS.length; map++) {
+      const per: RunResult[] = [];
       for (let i = 0; i < RUNS; i++)
-        rs.push(runOne(map, MODE_FIXED, 'BENCH-' + i, { maxWave: MAX, mix }));
-    rows.push([lo.name, stats(rs)]);
+        per.push(runOne(map, MODE_FIXED, 'BENCH-' + i, { maxWave: MAX, mix }));
+      rows.push(['  ' + lo.name + ' · ' + MAPS[map].name, stats(per)]);
+      rs.push(...per);
+    }
+    rows.push([lo.name + ' — разом', stats(rs)]);
   }
   emit('\n══ НАБОРИ (фіксований шлях, усі мапи) ══\n' + table(rows));
 }, 600000);
