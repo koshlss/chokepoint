@@ -47,20 +47,22 @@ it(`баланс: ${RUNS} забігів до хвилі ${MAX}`, () => {
   }
 }, 600000);
 
-it('баланс наборів арсеналу', () => {
-  const rows: [string, ReturnType<typeof stats>][] = [];
-  for (const lo of LOADOUTS) {
-    const mix = mixFor(lo.tools);
-    if (!mix.length) continue;
-    const rs: RunResult[] = [];
-    for (let map = 0; map < MAPS.length; map++) {
-      const per: RunResult[] = [];
-      for (let i = 0; i < RUNS; i++)
-        per.push(runOne(map, MODE_FIXED, 'BENCH-' + i, { maxWave: MAX, mix }));
-      rows.push(['  ' + lo.name + ' · ' + MAPS[map].name, stats(per)]);
-      rs.push(...per);
+it('баланс фракцій', () => {
+  for (const mode of [MODE_FIXED, MODE_MAZE]) {
+    const rows: [string, ReturnType<typeof stats>][] = [];
+    for (const lo of LOADOUTS) {
+      const mix = mixFor(lo.tools);
+      if (!mix.length) continue;
+      const rs: RunResult[] = [];
+      for (let map = 0; map < MAPS.length; map++) {
+        const per: RunResult[] = [];
+        for (let i = 0; i < RUNS; i++)
+          per.push(runOne(map, mode, 'BENCH-' + i, { maxWave: MAX, mix }));
+        rows.push(['  ' + lo.name + ' · ' + MAPS[map].name, stats(per)]);
+        rs.push(...per);
+      }
+      rows.push([lo.name + ' — разом', stats(rs)]);
     }
-    rows.push([lo.name + ' — разом', stats(rs)]);
+    emit(`\n══ ФРАКЦІЇ · ${mode === MODE_FIXED ? 'ФІКСОВАНИЙ ШЛЯХ' : 'ЛАБІРИНТ'} ══\n` + table(rows));
   }
-  emit('\n══ НАБОРИ (фіксований шлях, усі мапи) ══\n' + table(rows));
-}, 600000);
+}, 900000);
