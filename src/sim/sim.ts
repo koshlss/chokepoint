@@ -7,6 +7,7 @@ import { TOOL_BY_KEY, UPG, MAX_LVL, AIMS } from '../content/towers';
 import { ARMOR, waveSpec } from '../content/waves';
 
 class Sim {
+  arsenals: Set<string>[] | null;
   blocked: any;
   cov: any;
   creeps: any;
@@ -44,10 +45,17 @@ class Sim {
   waveVotes: any;
   won: any;
 
-  constructor(seedStr, diff, nPlayers, mapIdx, mode) {
+  /* arsenals — по набору дозволених башт на гравця. Не входить у hash():
+     це статична умова партії, а не стан. Якщо сторони розійшлися в
+     наборах, перший же збудований непарний ключ розведе дошки, і звірка
+     хешів це впіймає сама — окремого поля для цього не треба. */
+  constructor(seedStr, diff, nPlayers, mapIdx, mode, arsenals?: string[][]) {
     this.seedStr = seedStr;
     this.diff    = diff | 0;
     this.nPlayers = nPlayers || 1;
+    this.arsenals = (arsenals && arsenals.length)
+      ? arsenals.map(a => new Set(a))
+      : null;                                  // null — повний арсенал, як було
     this.mapIdx  = mapIdx | 0;
     this.mode    = mode | 0;
     this.map     = MAPS[this.mapIdx] || MAPS[0];
@@ -211,6 +219,14 @@ class Sim {
   }
   towerAt(x, y) { return this.towers.find(t => t.x === x && t.y === y) || null; }
 
+  /* Чи дозволяє набір цього гравця ставити таку башту. Без наборів
+     (arsenals === null) дозволено все — рівно як до їх появи. */
+  allows(p: number, key: string): boolean {
+    if (!this.arsenals) return true;
+    const a = this.arsenals[p] || this.arsenals[0];
+    return a ? a.has(key) : true;
+  }
+
   buildable(x, y) {
     if (x < 0 || y < 0 || x >= GW || y >= GH) return false;
     const i = idx(x, y);
@@ -231,6 +247,7 @@ class Sim {
     if (cmd.t === 'build') {
       const tool = TOOL_BY_KEY[cmd.k];
       if (!tool || !this.buildable(cmd.x, cmd.y)) { this.events.push({ e:'deny', p:cmd.p, why:'зайнято' }); return; }
+      if (!this.allows(cmd.p, cmd.k)) { this.events.push({ e:'deny', p:cmd.p, why:'не в наборі' }); return; }
       if (p.gold < tool.cost) { this.events.push({ e:'deny', p:cmd.p, why:'мало золота' }); return; }
 
       const i = idx(cmd.x, cmd.y);

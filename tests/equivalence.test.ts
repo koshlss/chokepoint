@@ -10,9 +10,12 @@ import { describe, it, expect } from 'vitest';
 import { Sim } from '../src/sim/sim';
 import { MAPS } from '../src/content/maps';
 import { MODE_MAZE, MODE_FIXED } from '../src/sim/constants';
-import { TOOLS } from '../src/content/towers';
+/* Навмисно прибитий список, а не TOOLS: тест звіряє новий код зі старим
+   ядром, у якому башт було рівно шість. Якщо взяти живий реєстр, то будь-яка
+   нова башта поїде в команді, якої еталон не знає, і тест почне падати на
+   рівному місці — хоча міграція тут ні до чого. */
+const LEGACY_TOOL_KEYS = ['wall', 'arrow', 'mortar', 'frost', 'venom', 'rail'];
 
-// @ts-expect-error — еталон без типів, це навмисно сирий зріз старого коду
 import { Sim as LegacySim } from './legacy-core.mjs';
 
 /* Детермінований потік команд: жодного Math.random, лише сід і арифметика.
@@ -26,7 +29,7 @@ function script(seed: number) {
     const tick = 3 + i * 7;
     const x = rnd(26), y = rnd(18);
     const roll = rnd(10);
-    if (roll < 6)      cmds.push({ tick, cmd: { t:'build', x, y, k: TOOLS[rnd(TOOLS.length)].key, p:0 } });
+    if (roll < 6)      cmds.push({ tick, cmd: { t:'build', x, y, k: LEGACY_TOOL_KEYS[rnd(LEGACY_TOOL_KEYS.length)], p:0 } });
     else if (roll < 8) cmds.push({ tick, cmd: { t:'up',   x, y, p:0 } });
     else if (roll < 9) cmds.push({ tick, cmd: { t:'aim',  x, y, p:0 } });
     else               cmds.push({ tick, cmd: { t:'raze', x, y, p:0 } });
