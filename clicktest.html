@@ -78,7 +78,9 @@ window.addEventListener('load', async () => {
   check('у соло duelBoards вимкнений', w.CHOKEPOINT.duelBoards === false);
   check('у соло simMate відсутній', w.CHOKEPOINT.simMate === null);
   const duelCb = d.getElementById('duelToggle');
-  check('тумблер дуелі неактивний у соло (немає з ким)', duelCb.disabled === true || d.getElementById('duelField').className.indexOf('na') >= 0);
+  check('обидва стани гри вдвох мають назву', duelCb.options && duelCb.options.length === 2,
+        [...duelCb.options].map(o => o.text).join(' / '));
+  check('вибір гри вдвох неактивний у соло (немає з ким)', duelCb.disabled === true || d.getElementById('duelField').className.indexOf('na') >= 0);
 
   /* 0д. Панель гравців: у соло її бути НЕ має — рядок на одного лише
          дублював би шапку. Натомість у шапці стоїть особиста стата. */
@@ -178,8 +180,13 @@ window.addEventListener('load', async () => {
   /* Бар'єр на фіксованій трасі не робить нічого (перевірено прогоном:
      375 штук не змінили ні довжину траси, ні жодного життя), тож там його
      не має бути в панелі взагалі. */
-  check('у лабіринті бар\'єр в арсеналі є', railKeys().indexOf('wall') >= 0, railKeys().join(','));
+  // Режим задаємо явно: за замовчуванням стоїть фіксований шлях, тож
+  // покладатись тут на початковий стан означало б перевіряти не бар'єр.
   const modeSel = d.getElementById('modeSel');
+  modeSel.value = '0';
+  modeSel.dispatchEvent(new w.Event('change'));
+  check('у лабіринті бар\'єр в арсеналі є',
+        await until(() => railKeys().indexOf('wall') >= 0), railKeys().join(','));
   modeSel.value = '1';
   modeSel.dispatchEvent(new w.Event('change'));
   check('на фіксованій трасі бар\'єра в арсеналі немає',

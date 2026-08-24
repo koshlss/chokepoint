@@ -86,7 +86,7 @@ const el = {
   lobbyCopy: byId<HTMLButtonElement>('btnLobbyCopy'),
   webhookUrl: byId<HTMLInputElement>('webhookUrl'), webhookTest: byId<HTMLButtonElement>('btnWebhookTest'),
   webhookHint: byId('webhookHint'), downloadLog: byId<HTMLButtonElement>('btnDownloadLog'),
-  duelField: byId('duelField'), duel: byId<HTMLInputElement>('duelToggle'),
+  duelField: byId('duelField'), duel: byId<HTMLSelectElement>('duelToggle'),
   mateBoard: byId('mateBoard'),
   mbWave: byId('mbWave'), mbLives: byId('mbLives'), mbGold: byId('mbGold'),
   myName: byId<HTMLInputElement>('myName'), mySwatches: byId('mySwatches'),
@@ -347,7 +347,7 @@ function boot(g?: number) {
   const n = net.solo ? 1 : 2;
   const seed = el.seed.value || 'MAZE-01', diff = parseInt(el.diff.value, 10);
   const mapIdx = parseInt(el.mapSel.value, 10), mode = parseInt(el.modeSel.value, 10);
-  duelBoards = n > 1 && mode === MODE_FIXED && el.duel.checked;
+  duelBoards = n > 1 && mode === MODE_FIXED && duelWanted();
 
   /* У дуелі кожен грає на сольній дошці (своя лінія, своє HP) — не на
      спільній двомісній. Обидві дошки на однаковому сіді, тож хвилі
@@ -624,7 +624,7 @@ function cycleSpeed() {
 const readSetup = () => ({
   seed: el.seed.value || 'MAZE-01', diff: parseInt(el.diff.value, 10),
   map: parseInt(el.mapSel.value, 10), mode: parseInt(el.modeSel.value, 10),
-  duel: duelAllowed() && el.duel.checked,
+  duel: duelAllowed() && duelWanted(),
   /* Фракції — по індексу МЕРЕЖЕВОГО гравця, а не «моя/його». Так пара
      читається однаково в обох, і дошки збираються з того самого. */
   ars: arsenalPair(),
@@ -633,7 +633,7 @@ function writeSetup(s) {
   if (!s) return;
   el.seed.value = s.seed; el.diff.value = String(s.diff);
   el.mapSel.value = String(s.map | 0); el.modeSel.value = String(s.mode | 0);
-  el.duel.checked = !!s.duel;
+  el.duel.value = s.duel ? '1' : '0';
   if (s.ars && s.ars.length === 2) {
     /* Пара від хоста — остаточна. Свій вибір гість уже надіслав ident'ом
        і «Готовим», тож зазвичай це те саме; але якщо не встигло дійти,
@@ -656,10 +656,13 @@ function randomSeed() { return 'S' + Math.random().toString(36).slice(2, 8).toUp
 function duelAllowed() {
   return !net.solo && parseInt(el.modeSel.value, 10) === MODE_FIXED;
 }
+/* Чого хоче гравець — окремо від того, чи це зараз можливо. Вибір НЕ
+   збивається, коли дуель недоступна: інакше кожен вихід у соло тихо
+   повертав би «спільну лінію», і напарник, зайшовши, потрапляв би не в
+   той режим. Придатність вирішують duelAllowed() на місці використання. */
+const duelWanted = () => el.duel.value === '1';
 function updateDuelAvailability() {
-  const ok = duelAllowed();
-  el.duelField.classList.toggle('na', !ok);
-  if (!ok) el.duel.checked = false;
+  el.duelField.classList.toggle('na', !duelAllowed());
 }
 
 /* Гість ніколи не крутить налаштування. Хост — тільки поки в лобі: під
@@ -695,7 +698,7 @@ function lobbyText() {
   const modeName = parseInt(el.modeSel.value, 10) === MODE_FIXED ? 'фіксований шлях' : 'лабіринт';
   const diffName = el.diff.options[el.diff.selectedIndex].text;
   return m.name + ' · ' + modeName + ' · складність ' + diffName + ' · сід ' + (el.seed.value || 'MAZE-01') +
-    (duelAllowed() && el.duel.checked ? ' · кожен на своїй лінії' : '');
+    (duelAllowed() && duelWanted() ? ' · кожен на своїй лінії' : '');
 }
 /* Фон лобі — не просто напис із назвою мапи, а сама мапа: терен, траса,
    вхід/вихід під напівпрозорою шторкою. Дешева одноразова Sim без хвиль,
