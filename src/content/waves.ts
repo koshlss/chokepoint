@@ -33,12 +33,35 @@ const KIND_NAME = ['піхота', 'бігуни', 'броньовані', 'ти
 const ARMOR = [0, 0, 3, 10];   // віднімається з удару, але не більш як 60% його — див. Sim.hurt.
                                // Отрута броні не бачить узагалі.
 
+/* ── нескінченний режим ────────────────────────────────────────────────
+   Здоров'я росте ГЕОМЕТРИЧНО, а не лінійно, і це принципово.
+
+   Було `3000 + 900×хвиля` — лінійно. А шкода гравця росте квадратично:
+   вежі не зникають, тож вона пропорційна НАКОПИЧЕНОМУ золоту, а дохід
+   за хвилю сам по собі лінійний. Квадрат завжди обганяє лінію, тож після
+   якоїсь хвилі гравець вигравав незалежно від будь-якого балансу — саме
+   тому забіг колись доходив до сотої хвилі.
+
+   Тепер геометрія обганяє квадрат, і нескінченний режим справді має
+   кінець. Множення цілочисельне й запам'ятовується, тож детермінізм
+   зберігається, а waveSpec лишається дешевим. */
+const HP_GROWTH = 118;                       // +18% за хвилю понад таблицю
+const hpMemo: number[] = [];
+function overHp(over: number): number {
+  if (hpMemo[over] !== undefined) return hpMemo[over];
+  let hp = 3000;
+  for (let i = 0; i < over; i++) hp = ((hp * HP_GROWTH) / 100) | 0;
+  hpMemo[over] = hp;
+  return hp;
+}
+
 function waveSpec(w: number): WaveSpec {     // w — 1-базований
   if (w <= WAVES.length) return WAVES[w - 1];
-  const over = w - WAVES.length;             // нескінченний режим, чиста формула
-  const body = { n:24, hp:((3000 * (100 + over * 30)) / 100) | 0, sp:24 + (over % 3) * 5, gold:38 + over * 3, kind:over % 3 };
-  if ((w % 5) === 0) return { n:1 + ((over / 12) | 0), hp:19000 + over * 5400, sp:18, gold:800 + over * 70, kind:3,
-                              esc:{ n:14, hp:(body.hp / 2) | 0, sp:28, gold:body.gold, kind:0 } };
+  const over = w - WAVES.length;
+  const hp = overHp(over);
+  const body = { n:24, hp, sp:24 + (over % 3) * 5, gold:38 + over * 3, kind:over % 3 };
+  if ((w % 5) === 0) return { n:1 + ((over / 12) | 0), hp:hp * 6, sp:18, gold:800 + over * 70, kind:3,
+                              esc:{ n:14, hp:(hp / 2) | 0, sp:28, gold:body.gold, kind:0 } };
   return body;
 }
 

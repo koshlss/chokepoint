@@ -66,7 +66,7 @@ const TOOLS: Tool[] = ([
     splash:tiles(1.7), dot:9, dotT:80, blurb:'Не питай, що воно робить.' },
 
   /* ══ КРИГА ══ допоміжна: коротко й жорстко ────────────────────────── */
-  { key:'frost',   faction:'ice',   tier:1, name:'Кріостат',   cost:60,  dmg:9,   cd:9,  range:tiles(3.0), shot:120, swatch:'--t-frost',
+  { key:'frost',   faction:'ice',   tier:1, name:'Кріостат',   cost:60,  dmg:5,   cd:9,  range:tiles(3.0), shot:120, swatch:'--t-frost',
     spread:tiles(0.9), slow:25, slowT:16, blurb:'Тихо потріскує холодом.' },
   { key:'sleet',   faction:'ice',   tier:1, name:'Ожеледь',    cost:150, dmg:22,  cd:20, range:tiles(3.2), shot:100, swatch:'--t-sleet',
     spread:tiles(1.3), slow:40, slowT:18, blurb:'Під нею незатишно.' },
