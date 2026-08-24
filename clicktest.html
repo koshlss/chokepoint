@@ -197,6 +197,32 @@ window.addEventListener('load', async () => {
   check('стартовий екран знімається кнопкою', await until(() => d.getElementById('veil').hidden === true));
   check('зняття паузи не кидає помилок', errs.length === 0, errs.join(' | '));
 
+  /* 0ж. Підказка по вежі: самих кольорів мало, щоб розрізняти двадцять веж. */
+  {
+    const cv = d.getElementById('cv'), tip = d.getElementById('towerTip');
+    const sim = w.CHOKEPOINT.sim;
+    let spot = null;
+    for (let y = 0; y < 18 && !spot; y++) for (let x = 0; x < 26; x++)
+      if (sim.buildable(x, y)) { spot = { x, y }; break; }
+    sim.players[0].gold = 9999;
+    const key = [...d.querySelectorAll('#rail .tool')].map(b => b.dataset.key).find(Boolean);
+    sim.apply({ t:'build', p:0, seq:0, x:spot.x, y:spot.y, k:key });
+    const r = cv.getBoundingClientRect(), cell = r.width / 26;
+    const at = (x, y) => cv.dispatchEvent(new w.MouseEvent('mousemove', { bubbles:true,
+      clientX: r.left + (x + 0.5) * cell, clientY: r.top + (y + 0.5) * cell }));
+    at(spot.x, spot.y);
+    check('підказка по вежі з\'являється', tip.hidden === false);
+    check('у підказці є назва вежі', tip.textContent.length > 8, tip.textContent.slice(0, 40));
+    check('підказка тримається в межах дошки',
+          parseFloat(tip.style.left) >= 0 && parseFloat(tip.style.top) >= 0);
+    // порожня клітина — підказки бути не має
+    let empty = null;
+    for (let y = 17; y >= 0 && !empty; y--) for (let x = 25; x >= 0; x--)
+      if (sim.buildable(x, y) && !sim.towerAt(x, y)) { empty = { x, y }; break; }
+    if (empty) { at(empty.x, empty.y); check('на порожній клітині підказки немає', tip.hidden === true); }
+    cv.dispatchEvent(new w.MouseEvent('mouseleave', { bubbles:true }));
+  }
+
   /* 0б. Гість щойно приєднався: номер гравця вже 1, а симуляція ще
          однокористувацька. Саме тут цикл падав на sim.players[1].gold. */
   errs.length = 0;

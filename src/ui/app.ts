@@ -73,7 +73,7 @@ const el = {
   kills: byId('rKills'), towers: byId('rTowers'), dmg: byId('rDmg'),
   primarySel: byId<HTMLSelectElement>('primarySel'), supportSel: byId<HTMLSelectElement>('supportSel'),
   loadoutField: byId('loadoutField'),
-  veilFactions: byId('veilFactions'),
+  veilFactions: byId('veilFactions'), towerTip: byId('towerTip'),
 };
 
 MAPS.forEach((m, i) => {
@@ -484,8 +484,40 @@ function tileAt(ev) {
   const y = ((ev.clientY - r.top) / r.height * GH) | 0;
   return [Math.max(0, Math.min(GW - 1, x)), Math.max(0, Math.min(GH - 1, y))];
 }
-cv.addEventListener('mousemove', e => { const [x, y] = tileAt(e); hoverX = x; hoverY = y; });
-cv.addEventListener('mouseleave', () => { hoverX = hoverY = -1; });
+cv.addEventListener('mousemove', e => {
+  const [x, y] = tileAt(e); hoverX = x; hoverY = y;
+  showTowerTip(e);
+});
+cv.addEventListener('mouseleave', () => { hoverX = hoverY = -1; el.towerTip.hidden = true; });
+
+/* Підказка по вежі під курсором. Самих кольорів мало, щоб розрізняти
+   двадцять веж, а клікати заради перевірки — зайвий крок посеред хвилі.
+   Радіус показуємо лише там, де його взагалі показують (легкий рівень). */
+function showTowerTip(e: MouseEvent) {
+  const t = sim && sim.towerAt(hoverX, hoverY);
+  if (!t) { el.towerTip.hidden = true; return; }
+  const b = TOOL_BY_KEY[t.k];
+  const rows = [
+    `<b style="color:${C(b.swatch)}">${escapeHtml(b.name)}</b><i>рівень ${t.lvl}</i>`,
+    `${Math.round(t.st.dmg * TPS / Math.max(1, t.st.cd))} шк/с` +
+      (rangeShown() ? ` · радіус ${(t.st.range / SUB).toFixed(1)}` : ''),
+    `ціль: ${AIMS[t.aim]}`,
+  ];
+  if (t.build > 0) rows.push('<u>будується…</u>');
+  else if (t.lvl < MAX_LVL) rows.push(`<u>прокачка ${sim.upgradeCost(t)}</u>`);
+  rows.push(`<u>знести → ${sim.refund(t)}</u>`);
+  el.towerTip.innerHTML = rows.join('<br>');
+  el.towerTip.hidden = false;
+
+  // тримаємо підказку в межах дошки, щоб вона не вилазила за край
+  const box = cv.getBoundingClientRect();
+  const w = el.towerTip.offsetWidth, h = el.towerTip.offsetHeight;
+  let x = e.clientX - box.left + 14, y = e.clientY - box.top + 14;
+  if (x + w > box.width)  x = e.clientX - box.left - w - 14;
+  if (y + h > box.height) y = e.clientY - box.top - h - 14;
+  el.towerTip.style.left = Math.max(0, x) + 'px';
+  el.towerTip.style.top  = Math.max(0, y) + 'px';
+}
 cv.addEventListener('contextmenu', e => { e.preventDefault(); const [x, y] = tileAt(e); enqueue({ t:'raze', x, y }); });
 cv.addEventListener('mousedown', e => {
   if (e.button !== 0) return;
