@@ -34,11 +34,12 @@ window.addEventListener('load', async () => {
   await new Promise(r => setTimeout(r, 400));
   say('версія: ' + (w.CHOKEPOINT && w.CHOKEPOINT.BUILD));
   check('гра стартувала', w.CHOKEPOINT && w.CHOKEPOINT.sim && w.CHOKEPOINT.sim.tick >= 0);
-  /* Живість циклу міряємо саме тут, поки сторінка щойно завантажилась і
-     кадри анімації точно були. Далі покладатись на них не можна: під
-     віртуальним часом таймери й кадри йдуть не в ногу, і будь-яке
-     очікування «доки тік зросте» вимірює стенд, а не гру. */
-  check('цикл анімації живий', w.CHOKEPOINT.sim.tick > 0, 'тік ' + w.CHOKEPOINT.sim.tick);
+  /* Живість циклу міряємо очікуванням умови, а не фіксованою паузою:
+     цикл стартує разом із партією, і 400 мс наосліп то встигали, то ні.
+     Умова однаково правдива і на кадрах анімації, і на таймері, яким
+     цикл їде у фоновій вкладці. */
+  check('цикл анімації живий', await until(() => w.CHOKEPOINT.sim.tick > 0),
+        'тік ' + w.CHOKEPOINT.sim.tick);
 
   /* 0. Цілість інтерфейсу мережі. Геттер live одного разу зник під час
         редагування — гра мовчки грала соло, і жодна перевірка цього не
@@ -210,8 +211,11 @@ window.addEventListener('load', async () => {
     const r = cv.getBoundingClientRect(), cell = r.width / 26;
     const at = (x, y) => cv.dispatchEvent(new w.MouseEvent('mousemove', { bubbles:true,
       clientX: r.left + (x + 0.5) * cell, clientY: r.top + (y + 0.5) * cell }));
+    // Підказку збирає кадр, а не сам рух миші: інакше кожен рух коштував
+    // запису в DOM і одразу читання розмірів, тобто перерахунку розкладки.
+    // Тому чекаємо на умову, а не читаємо одразу після події.
     at(spot.x, spot.y);
-    check('підказка по вежі з\'являється', tip.hidden === false);
+    check('підказка по вежі з\'являється', await until(() => tip.hidden === false));
     check('у підказці є назва вежі', tip.textContent.length > 8, tip.textContent.slice(0, 40));
     check('підказка тримається в межах дошки',
           parseFloat(tip.style.left) >= 0 && parseFloat(tip.style.top) >= 0);
@@ -219,7 +223,7 @@ window.addEventListener('load', async () => {
     let empty = null;
     for (let y = 17; y >= 0 && !empty; y--) for (let x = 25; x >= 0; x--)
       if (sim.buildable(x, y) && !sim.towerAt(x, y)) { empty = { x, y }; break; }
-    if (empty) { at(empty.x, empty.y); check('на порожній клітині підказки немає', tip.hidden === true); }
+    if (empty) { at(empty.x, empty.y); check('на порожній клітині підказки немає', await until(() => tip.hidden === true)); }
     cv.dispatchEvent(new w.MouseEvent('mouseleave', { bubbles:true }));
   }
 

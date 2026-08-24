@@ -39,7 +39,29 @@ const ctx = cv.getContext('2d')!;
 const cvMate  = byId<HTMLCanvasElement>('cvMate');
 const ctxMate = cvMate.getContext('2d')!;
 const css = getComputedStyle(document.documentElement);
-const C   = (n: string) => css.getPropertyValue(n).trim();
+/* Палітра за час партії не міняється, а getPropertyValue на живому
+   getComputedStyle — це примусовий перерахунок стилів. Викликається воно
+   з кожного кадру малювання, тож без запам'ятовування виходили десятки
+   перерахунків на кадр. */
+const cCache = new Map<string, string>();
+const C = (n: string): string => {
+  let v = cCache.get(n);
+  if (v === undefined) { v = css.getPropertyValue(n).trim(); cCache.set(n, v); }
+  return v;
+};
+
+/* Запис у DOM щокадру — навіть тим самим значенням — щоразу викидає
+   старий текстовий вузол і псує розкладку. Далі йде читання (C(),
+   getBoundingClientRect), і браузер мусить усе перерахувати: класичне
+   «запис → читання → запис». У коопі це помітно лагало, у соло ні —
+   бо соло не перемальовує ні панель гравців, ні стан з'єднання. */
+function setText(node: HTMLElement, v: string | number): void {
+  const s = String(v);
+  if (node.textContent !== s) node.textContent = s;
+}
+function setHTML(node: HTMLElement, v: string): void {
+  if ((node as any).__html !== v) { (node as any).__html = v; node.innerHTML = v; }
+}
 
 const el = {
   wave:  byId('rWave'),  lives: byId('rLives'),
@@ -485,43 +507,64 @@ function enqueue(cmd) {
   cmd.p = netP();     // мережевий тег — розсортовується по дошках ДО sim.step()
   ls.queue(cmd);
 }
+/* Межі дошки читаються раз на кадр, а не з кожного руху миші.
+   getBoundingClientRect змушує браузер перерахувати розкладку, і робити
+   це по сто разів на секунду — та ще й упереміш із записами в DOM —
+   коштує дорожче за все інше в обробнику. Оновлює його кадр, тож
+   значення завжди свіже. */
+let cvRect: DOMRect | null = null;
+const boardRect = (): DOMRect => (cvRect ||= cv.getBoundingClientRect());
 function tileAt(ev) {
-  const r = cv.getBoundingClientRect();
+  const r = boardRect();
   const x = ((ev.clientX - r.left) / r.width * GW) | 0;
   const y = ((ev.clientY - r.top) / r.height * GH) | 0;
   return [Math.max(0, Math.min(GW - 1, x)), Math.max(0, Math.min(GH - 1, y))];
 }
+/* Сам рух миші лише запам'ятовує позицію: підказку збирає кадр. Інакше
+   на кожен рух ішли запис innerHTML і одразу читання offsetWidth —
+   розкладка перераховувалась по двічі на рух. */
+let tipAt: { x: number; y: number } | null = null;
 cv.addEventListener('mousemove', e => {
   const [x, y] = tileAt(e); hoverX = x; hoverY = y;
-  showTowerTip(e);
+  tipAt = { x: e.clientX, y: e.clientY };
 });
-cv.addEventListener('mouseleave', () => { hoverX = hoverY = -1; el.towerTip.hidden = true; });
+cv.addEventListener('mouseleave', () => {
+  hoverX = hoverY = -1; tipAt = null; tipKey = ''; el.towerTip.hidden = true;
+});
 
 /* Підказка по вежі під курсором. Самих кольорів мало, щоб розрізняти
    двадцять веж, а клікати заради перевірки — зайвий крок посеред хвилі.
    Радіус показуємо лише там, де його взагалі показують (легкий рівень). */
-function showTowerTip(e: MouseEvent) {
+let tipKey = '', tipW = 0, tipH = 0;
+function showTowerTip(cx: number, cy: number) {
   const t = sim && sim.towerAt(hoverX, hoverY);
-  if (!t) { el.towerTip.hidden = true; return; }
+  if (!t) { el.towerTip.hidden = true; tipKey = ''; return; }
   const b = TOOL_BY_KEY[t.k];
-  const rows = [
-    `<b style="color:${C(b.swatch)}">${escapeHtml(b.name)}</b><i>рівень ${t.lvl}</i>`,
-    `${Math.round(t.st.dmg * TPS / Math.max(1, t.st.cd))} шк/с` +
-      (rangeShown() ? ` · радіус ${(t.st.range / SUB).toFixed(1)}` : ''),
-    `ціль: ${AIMS[t.aim]}`,
-  ];
-  if (t.build > 0) rows.push('<u>будується…</u>');
-  else if (t.lvl < MAX_LVL) rows.push(`<u>прокачка ${sim.upgradeCost(t)}</u>`);
-  rows.push(`<u>знести → ${sim.refund(t)}</u>`);
-  el.towerTip.innerHTML = rows.join('<br>');
+  /* Розмір підказки читаємо, лише коли справді змінився її вміст:
+     інакше кожен рух миші вздовж однієї вежі коштував перерахунку. */
+  const key = [t.x, t.y, t.k, t.lvl, t.aim, t.build > 0, sim.upgradeCost(t), sim.refund(t)].join('|');
+  if (key !== tipKey) {
+    tipKey = key;
+    const rows = [
+      `<b style="color:${C(b.swatch)}">${escapeHtml(b.name)}</b><i>рівень ${t.lvl}</i>`,
+      `${Math.round(t.st.dmg * TPS / Math.max(1, t.st.cd))} шк/с` +
+        (rangeShown() ? ` · радіус ${(t.st.range / SUB).toFixed(1)}` : ''),
+      `ціль: ${AIMS[t.aim]}`,
+    ];
+    if (t.build > 0) rows.push('<u>будується…</u>');
+    else if (t.lvl < MAX_LVL) rows.push(`<u>прокачка ${sim.upgradeCost(t)}</u>`);
+    rows.push(`<u>знести → ${sim.refund(t)}</u>`);
+    el.towerTip.innerHTML = rows.join('<br>');
+    el.towerTip.hidden = false;
+    tipW = el.towerTip.offsetWidth; tipH = el.towerTip.offsetHeight;
+  }
   el.towerTip.hidden = false;
 
   // тримаємо підказку в межах дошки, щоб вона не вилазила за край
-  const box = cv.getBoundingClientRect();
-  const w = el.towerTip.offsetWidth, h = el.towerTip.offsetHeight;
-  let x = e.clientX - box.left + 14, y = e.clientY - box.top + 14;
-  if (x + w > box.width)  x = e.clientX - box.left - w - 14;
-  if (y + h > box.height) y = e.clientY - box.top - h - 14;
+  const box = boardRect();
+  let x = cx - box.left + 14, y = cy - box.top + 14;
+  if (x + tipW > box.width)  x = cx - box.left - tipW - 14;
+  if (y + tipH > box.height) y = cy - box.top - tipH - 14;
   el.towerTip.style.left = Math.max(0, x) + 'px';
   el.towerTip.style.top  = Math.max(0, y) + 'px';
 }
@@ -1029,6 +1072,7 @@ function frame(now: number) {
 }
 
 function frameBody(now) {
+  cvRect = null;                 // межі дошки — один вимір на кадр, до записів у DOM
   if (!last) last = now;
   let dt = now - last; last = now;
   if (dt > 250) dt = 250;
@@ -1097,6 +1141,7 @@ function frameBody(now) {
   else render(sim.frozen || sim.over ? 1 : Math.min(1, acc / stepMs));
   if (duelBoards) renderMate();
   hud();
+  if (tipAt) showTowerTip(tipAt.x, tipAt.y);
 }
 
 /* Класика: обидва боки бачать ОДНУ дошку, і a/b — просто мій/чужий хеш
@@ -1266,28 +1311,46 @@ function rosterRows() {
     towers:sim.towers.filter(t => t.owner === i).length,
   })).sort((a, b) => b.kills - a.kills);
 }
+/* Панель гравців оновлюється з кожного кадру, і раніше щоразу
+   перебудовувала весь innerHTML. Одна зі шкод росте безперервно, тож
+   розмітка теж перебудовувалась безперервно: вузли викидались і
+   створювались заново шістдесят разів на секунду, а поруч читались
+   обчислені стилі — гра відчутно лагала в коопі й тільки в коопі.
+   Тепер розмітку будуємо, лише коли міняється склад панелі (гравці,
+   ніки, кольори, фракції, порядок), а щокадру правимо самі числа. */
+let rosterShape = '';
 function renderRoster() {
   if (!sim) return;
   const rows = rosterRows();
-  /* Смужка за головним показником — щоб відрив читався оком, без
-     вчитування в цифри. Це і є вся суть панелі в коопі. */
-  /* Рядок на гравця, а не таблиця: панель тепер клітина шапки, і сім
-     стовпчиків із заголовками робили її вдвічі вищою за решту. */
-  el.rosterBody.innerHTML = rows.map((r, i) => {
-    const id = identFor(r.p);
-    const [pk, sk] = loadoutOf(r.p);
-    const facs = [LOADOUT_BY_KEY[pk], LOADOUT_BY_KEY[sk]].filter(Boolean)
-      .map(lo => escapeHtml(lo.name)).join(' + ');
-    const num = (v: number, cls = '') => '<u class="' + cls + '">' + v + '</u>';
-    return '<div class="pRow' + (r.p === netP() ? ' me' : '') + '">' +
-      '<span class="dot" style="background:' + C(paletteCss(id.color)) + '"></span>' +
-      '<b>' + escapeHtml(identName(r.p)) +
-        (i === 0 && rows.length > 1 && r.kills > 0 ? '<i>веде</i>' : '') + '</b>' +
-      '<span class="fx">' + facs + '</span>' +
-      '<span class="nums">' + num(r.kills) + num(r.dmg) + num(r.towers) +
-        num(r.gold, 'gold') + num(r.hp, 'hp') + '</span>' +
-      '</div>';
-  }).join('');
+  const shape = rows.map((r, i) => [r.p, identName(r.p), identFor(r.p).color,
+    loadoutOf(r.p).join('+'), i === 0 && rows.length > 1 && r.kills > 0 ? 'веде' : ''].join('')).join('');
+
+  if (shape !== rosterShape) {
+    rosterShape = shape;
+    /* Рядок на гравця, а не таблиця: панель тепер клітина шапки, і сім
+       стовпчиків із заголовками робили її вдвічі вищою за решту. */
+    el.rosterBody.innerHTML = rows.map((r, i) => {
+      const id = identFor(r.p);
+      const [pk, sk] = loadoutOf(r.p);
+      const facs = [LOADOUT_BY_KEY[pk], LOADOUT_BY_KEY[sk]].filter(Boolean)
+        .map(lo => escapeHtml(lo.name)).join(' + ');
+      const num = (cls = '') => '<u class="' + cls + '"></u>';
+      return '<div class="pRow' + (r.p === netP() ? ' me' : '') + '">' +
+        '<span class="dot" style="background:' + C(paletteCss(id.color)) + '"></span>' +
+        '<b>' + escapeHtml(identName(r.p)) +
+          (i === 0 && rows.length > 1 && r.kills > 0 ? '<i>веде</i>' : '') + '</b>' +
+        '<span class="fx">' + facs + '</span>' +
+        '<span class="nums">' + num() + num() + num() + num('gold') + num('hp') + '</span>' +
+        '</div>';
+    }).join('');
+  }
+
+  const body = el.rosterBody.children;
+  for (let i = 0; i < rows.length && i < body.length; i++) {
+    const r = rows[i], u = body[i].querySelectorAll<HTMLElement>('.nums u');
+    const v = [r.kills, r.dmg, r.towers, r.gold, r.hp];
+    for (let j = 0; j < u.length && j < v.length; j++) setText(u[j], v[j]);
+  }
 }
 
 /* У соло панель гравців не показуємо взагалі: рядок на одного дублював
@@ -1304,26 +1367,34 @@ function syncPanels() {
   if (!solo && sim) renderRoster();
 }
 
+/* Лічильник кадрів, а не тіків: у лобі симуляція стоїть, а діагностика
+   потрібна саме там — інакше вона б завмерла до першої хвилі. */
+let diagIn = 0;
 function hud() {
   const solo = net.solo;
   syncPanels();
   if (solo) {
     const p = sim.players[0];
-    el.kills.textContent  = p.kills;
-    el.towers.textContent = sim.towers.length;
-    el.dmg.textContent    = p.dmg;
+    setText(el.kills,  p.kills);
+    setText(el.towers, sim.towers.length);
+    setText(el.dmg,    p.dmg);
   }
-  el.wave.textContent  = sim.wave;
-  el.lives.textContent = sim.lives;
+  setText(el.wave,  sim.wave);
+  setText(el.lives, sim.lives);
   el.lives.className   = 'v' + (sim.lives <= 5 ? ' warn' : '');
-  el.gold.textContent  = sim.players[meId()].gold;
+  setText(el.gold, sim.players[meId()].gold);
   if (duelBoards && simMate) {
-    el.mbWave.textContent  = simMate.over ? (simMate.wave - 1) + ' (кінець)' : simMate.wave;
-    el.mbLives.textContent = simMate.lives;
-    el.mbGold.textContent  = simMate.players[0].gold;
+    setText(el.mbWave,  simMate.over ? (simMate.wave - 1) + ' (кінець)' : simMate.wave);
+    setText(el.mbLives, simMate.lives);
+    setText(el.mbGold,  simMate.players[0].gold);
   }
   const nx = sim.nextInfo();
-  el.next.textContent  = KIND_NAME[nx.kind] + ' ×' + nx.n + (nx.boss ? ' + супровід' : '');
+  /* Відлік стоїть тут, а не на кнопці: на кнопці він мінявся щосекунди,
+     разом із ним мінялась ширина, і сусідні кнопки стрибали — керувати
+     ходом партії ставало незручно. Кнопка тепер називає дію, а час до
+     хвилі живе там, де й решта показників. */
+  setText(el.next, KIND_NAME[nx.kind] + ' ×' + nx.n + (nx.boss ? ' + супровід' : '') +
+    (sim.phase === 0 ? ' · ' + Math.ceil(sim.prep / TPS) + ' с' : ''));
   el.next.className    = 'v' + (nx.kind === 3 ? ' warn' : nx.kind === 2 ? ' calm' : '');
   // У дуелі голоси рахує duelWaveVotes (два реальні гравці), а не
   // sim.waveVotes — та дошка сама по собі сольна (nPlayers=1) і бачить
@@ -1331,16 +1402,19 @@ function hud() {
   const votes = duelBoards ? duelWaveVotes : sim.waveVotes;
   const voteOf = duelBoards ? netP() : meId();
   const voteTotal = duelBoards ? 2 : sim.nPlayers;
-  el.wave_.textContent = stalled ? 'Чекаю напарника…'
+  setText(el.wave_, stalled ? 'Чекаю напарника…'
     : sim.phase !== 0 ? 'Хвиля ' + sim.wave + ' іде'
     : votes.size > 0
       ? (votes.has(voteOf) ? 'Чекаю голосів' : 'Прискорити') + ' (' + votes.size + '/' + voteTotal + ')'
-      : 'Хвиля ' + (sim.wave + 1) + ' за ' + Math.ceil(sim.prep / TPS) + ' с';
+      : 'Викликати хвилю');
   el.wave_.disabled = sim.phase !== 0 || stalled || votes.has(voteOf);
-  if (!net.solo && net.onDiag) net.onDiag();   // діагностика жива й до з'єднання
+  /* Діагностика збирає рядки й пише їх у панель. Щокадру це не потрібно
+     нікому — вона й так оновлюється з подій мережі, а тут лише страхує
+     випадок «ще не з'єдналися». Двічі на секунду цілком досить. */
+  if (!net.solo && net.onDiag && --diagIn <= 0) { diagIn = 30; net.onDiag(); }
   if (net.live) {
-    el.netState.innerHTML = '<span class="dot"></span>Гравець ' + (net.me + 1) +
-      (net.rtt ? ' · ' + net.rtt + ' мс' : '');
+    setHTML(el.netState, '<span class="dot"></span>Гравець ' + (net.me + 1) +
+      (net.rtt ? ' · ' + net.rtt + ' мс' : ''));
   }
   refreshRail();
 }
