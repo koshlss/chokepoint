@@ -149,9 +149,9 @@ class Net {
       else if (m.t === 'h' && this.onHash) this.onHash(m.g, m.k, m.h);
       else if (m.t === 'r' && this.onRestart) this.onRestart(m.g, m.s);
       else if (m.t === 'cfg' && this.onCfg) this.onCfg(m.s, m.seq);
-      else if (m.t === 'ready' && this.onReady) this.onReady(m.seq);
+      else if (m.t === 'ready' && this.onReady) this.onReady(m);
       else if (m.t === 'speed' && this.onSpeed) this.onSpeed(m.v);
-      else if (m.t === 'ident' && this.onIdent) this.onIdent(m.name, m.color);
+      else if (m.t === 'ident' && this.onIdent) this.onIdent(m);
       else if (m.t === 'hi') {
         this.peerBuild = m.b || '?'; this.peerId = m.w || null;
         this.send({ t:'hi2', b: BUILD, w: this.myId });

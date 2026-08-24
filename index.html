@@ -33,25 +33,34 @@
       <label class="field" id="duelField" title="Кожен на своїй копії траси, зі своїм HP і своєю хвилею — лише для фіксованого шляху вдвох">
         <input type="checkbox" id="duelToggle"> Кожен сам за себе
       </label>
+      <label class="field faction" id="loadoutField" title="Фракція визначає твій арсенал. Кожен гравець обирає свою.">
+        Фракція <select id="loadoutSel"></select>
+      </label>
       <button id="restart">Новий забіг</button>
     </div>
   </header>
   <div class="mapNote" id="mapNote"></div>
 
-  <div class="readout">
+  <!-- У соло особиста стата стоїть прямо тут: окрема панель на одного
+       гравця дублювала б HP і золото й нічого не давала. У коопі клітини
+       з класом solo ховаються, а порівняння переїжджає в панель нижче. -->
+  <div class="readout" id="readout">
     <div class="stat"><div class="k">Хвиля</div><div class="v" id="rWave">0</div></div>
     <div class="stat"><div class="k">Життя</div><div class="v" id="rLives">20</div></div>
     <div class="stat"><div class="k">Золото</div><div class="v gold" id="rGold">0</div></div>
-    <div class="stat"><div class="k">Наступна хвиля</div><div class="v" id="rNext" style="font-size:15px">—</div></div>
+    <div class="stat solo"><div class="k">Вбито</div><div class="v" id="rKills">0</div></div>
+    <div class="stat solo"><div class="k">Веж</div><div class="v" id="rTowers">0</div></div>
+    <div class="stat solo"><div class="k">Шкода</div><div class="v" id="rDmg">0</div></div>
+    <div class="stat wide"><div class="k">Наступна хвиля</div><div class="v next" id="rNext">—</div></div>
   </div>
 
-  <div class="playersTop">
+  <div class="playersTop" id="playersTop" hidden>
     <div class="identRow">
       <input type="text" id="myName" maxlength="18" spellcheck="false" placeholder="Твій нік">
       <span class="swatches" id="mySwatches"></span>
     </div>
     <table class="roster">
-      <thead><tr><th></th><th>Гравець</th><th>HP</th><th>Золото</th><th>Вбито</th><th>Веж</th><th>Шкода</th></tr></thead>
+      <thead><tr><th></th><th>Гравець</th><th>Вбито</th><th>Шкода</th><th>Веж</th><th>Золото</th><th>HP</th></tr></thead>
       <tbody id="rosterBody"></tbody>
     </table>
   </div>
@@ -65,6 +74,9 @@
         <div class="veil" id="veil" hidden>
           <h2 id="veilTitle"></h2>
           <p id="veilText"></p>
+          <!-- Вибір фракції стоїть саме тут, а не в налаштуваннях: це
+               рішення на всю партію, і його видно перед самим стартом. -->
+          <div class="factions" id="veilFactions" hidden></div>
           <p class="readyDot" id="veilReady" hidden><b></b><span></span></p>
           <div class="row">
             <button id="veilBtn" class="primary">Новий забіг</button>

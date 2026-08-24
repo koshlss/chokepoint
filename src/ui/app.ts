@@ -4,6 +4,8 @@ import { Sim } from '../sim/sim';
 import { MAPS } from '../content/maps';
 import { TOOLS, TOOL_BY_KEY, UPG, MAX_LVL, AIMS } from '../content/towers';
 import type { Cursor, CursorMode, Tool } from '../content/types';
+import { TIER_WAVE, TIER_NAME, tierAt } from '../content/types';
+import { LOADOUTS, LOADOUT_BY_KEY, DEFAULT_LOADOUT, toolsOf } from '../content/loadouts';
 import { KIND_NAME } from '../content/waves';
 import { unpackCode } from '../net/codec';
 import { RTC } from '../net/ice';
@@ -66,6 +68,10 @@ const el = {
   mbWave: byId('mbWave'), mbLives: byId('mbLives'), mbGold: byId('mbGold'),
   myName: byId<HTMLInputElement>('myName'), mySwatches: byId('mySwatches'),
   rosterBody: byId('rosterBody'),
+  readout: byId('readout'), playersTop: byId('playersTop'),
+  kills: byId('rKills'), towers: byId('rTowers'), dmg: byId('rDmg'),
+  loadoutSel: byId<HTMLSelectElement>('loadoutSel'), loadoutField: byId('loadoutField'),
+  veilFactions: byId('veilFactions'),
 };
 
 MAPS.forEach((m, i) => {
@@ -88,8 +94,15 @@ function showStartVeil() {
   el.veil.hidden = false;
   el.veil.className = 'veil start';
   el.veilReady.hidden = true; el.veilB2.hidden = true; el.veilB.hidden = false;
+  /* Кнопку треба саме ВВІМКНУТИ, а не лише перепідписати: лобі вимикає її,
+     поки гість не готовий, і після повернення в соло вона лишалась мертвою
+     — гравець застрягав під вуаллю без жодного способу почати. */
+  el.veilB.disabled = false;
   el.veilT.textContent = 'Chokepoint';
-  el.veilX.textContent = 'Обери мапу, режим і складність вгорі — або створи лобі внизу для гри вдвох.';
+  el.veilX.textContent = 'Обери фракцію — вона визначає весь твій арсенал на партію. ' +
+    'Мапа, режим і складність — угорі; лобі для гри вдвох — унизу.';
+  el.veilFactions.hidden = false;
+  renderFactionCards();
   el.veilB.textContent = 'Почати гру';
   el.veilB.onclick = () => {
     gameStarted = true;
@@ -152,7 +165,74 @@ function identName(p) {
   if (id.name) return id.name;
   return net.solo ? 'Ти' : (p === netP() ? 'Ти' : 'Напарник');
 }
-function sendIdent() { if (net.live) net.send({ t:'ident', name: myIdent.name, color: myIdent.color }); }
+function sendIdent() {
+  if (net.live) net.send({ t:'ident', name: myIdent.name, color: myIdent.color, lo: myLoadout });
+}
+
+/* ── фракція ─────────────────────────────────────────────────────────
+   Вибір кожного гравця свій, тож він НЕ їде в налаштуваннях хоста.
+   Але на симуляцію він впливає (що кому дозволено будувати), тож обидві
+   сторони мусять знати обидва вибори ДО старту — інакше дошки розійдуться
+   на першій же башті. Тому вибір розсилається разом з ident'ом, а хост
+   кладе остаточну пару в повідомлення старту 'r'. */
+let myLoadout   = localStorage.getItem('cp_loadout') || DEFAULT_LOADOUT;
+let mateLoadout = DEFAULT_LOADOUT;
+if (!LOADOUT_BY_KEY[myLoadout]) myLoadout = DEFAULT_LOADOUT;
+
+/** Фракції по індексу мережевого гравця — так їх бачать обидві сторони однаково. */
+function arsenalPair(): string[] {
+  const pair = [myLoadout, mateLoadout];
+  return net.solo || netP() === 0 ? pair : [mateLoadout, myLoadout];
+}
+function loadoutOf(p: number): string {
+  if (net.solo) return myLoadout;
+  return p === netP() ? myLoadout : mateLoadout;
+}
+/** Башти, доступні мені за фракцією — незалежно від того, чи вже відкрито рівень. */
+function myTools(): Tool[] {
+  return TOOLS.filter(t => toolsOf(myLoadout).includes(t.key));
+}
+
+function setLoadout(key: string, broadcast = true) {
+  if (!LOADOUT_BY_KEY[key] || key === myLoadout) return;
+  myLoadout = key;
+  localStorage.setItem('cp_loadout', key);
+  el.loadoutSel.value = key;
+  renderFactionCards();
+  if (broadcast) sendIdent();
+  if (net.solo && sim) boot();          // у соло фракція міняється одразу, це новий забіг
+  else { renderLobby(); if (sim) drawRail(); }
+}
+
+/* Випадайка — для швидкої зміни; картки на стартовому екрані — для
+   першого вибору, коли ще треба прочитати, чим фракції різняться. */
+for (const lo of LOADOUTS) {
+  const o = document.createElement('option');
+  o.value = lo.key; o.textContent = lo.name;
+  el.loadoutSel.appendChild(o);
+}
+el.loadoutSel.value = myLoadout;
+el.loadoutSel.onchange = () => setLoadout(el.loadoutSel.value);
+
+function renderFactionCards() {
+  el.veilFactions.innerHTML = LOADOUTS.map(lo => {
+    const towers = lo.tools.filter(k => k !== 'wall').map(k => TOOL_BY_KEY[k]);
+    const rows = ([1, 2, 3] as const).map(tier => {
+      const own = towers.filter(t => t.tier === tier);
+      if (!own.length) return '';
+      const when = TIER_WAVE[tier] ? ' <i>з хвилі ' + TIER_WAVE[tier] + '</i>' : '';
+      return '<div class="tierRow"><span class="tierTag">' + TIER_NAME[tier] + when + '</span>' +
+        own.map(t => '<span class="pip" style="--sw:' + C(t.swatch) + '">' + escapeHtml(t.name) + '</span>').join('') +
+        '</div>';
+    }).join('');
+    return '<button class="fcard" data-lo="' + lo.key + '" style="--fc:' + C('--f-' + lo.key) + '"' +
+      ' aria-pressed="' + (lo.key === myLoadout) + '">' +
+      '<b>' + escapeHtml(lo.name) + '</b><i>' + escapeHtml(lo.blurb) + '</i>' + rows + '</button>';
+  }).join('');
+  el.veilFactions.querySelectorAll<HTMLElement>('.fcard').forEach(b => {
+    b.onclick = () => setLoadout(b.dataset.lo!);
+  });
+}
 
 el.myName.value = myIdent.name;
 el.myName.oninput = () => {
@@ -202,8 +282,13 @@ function boot(g?: number) {
   /* У дуелі кожен грає на сольній дошці (своя лінія, своє HP) — не на
      спільній двомісній. Обидві дошки на однаковому сіді, тож хвилі
      й баунті-роли ідентичні на обох — чесне порівняння «хто краще». */
-  sim = new Sim(seed, diff, duelBoards ? 1 : n, mapIdx, mode);
-  simMate = duelBoards ? new Sim(seed, diff, 1, mapIdx, mode) : null;
+  /* Фракції по індексу гравця. У дуелі кожна дошка сольна, тож своїй
+     дошці дістається мій набір, а дошці напарника — його: обидва клієнти
+     рахують це зі свого боку й приходять до того самого. */
+  const ars = arsenalPair().map(toolsOf);
+  sim = new Sim(seed, diff, duelBoards ? 1 : n, mapIdx, mode,
+                duelBoards ? [toolsOf(myLoadout)] : ars);
+  simMate = duelBoards ? new Sim(seed, diff, 1, mapIdx, mode, [toolsOf(mateLoadout)]) : null;
   mateOverSaid = false;
   duelWaveVotes.clear();
 
@@ -234,24 +319,43 @@ function boot(g?: number) {
 
 /* ── арсенал ─────────────────────────────────────────────────────────── */
 function drawRail() {
-  el.rail.querySelectorAll<HTMLElement>('.tool').forEach(n => n.remove());
-  TOOLS.forEach((t, i) => {
-    const b = document.createElement('button');
-    b.className = 'tool';
-    b.style.setProperty('--swatch', C(t.swatch));
-    b.setAttribute('aria-pressed', String(tool === t));
-    b.innerHTML =
-      '<span class="key">' + (i + 1) + '</span>' +
-      '<span class="nm"><b></b><i></i><u></u></span>' +
-      '<span class="cost">' + t.cost + '</span>';
-    b.querySelector('b').textContent = t.name;
-    b.querySelector('i').textContent = t.blurb;
-    b.querySelector('u').textContent = t.cd
-      ? Math.round(t.dmg * TPS / t.cd) + ' шк/с · радіус ' + (t.range / SUB).toFixed(1)
-      : 'перекриває клітину';
-    b.onclick = () => { tool = t; refreshRail(); };
-    el.rail.appendChild(b);
-  });
+  el.rail.querySelectorAll<HTMLElement>('.tool, .tierHead').forEach(n => n.remove());
+  el.rail.querySelector('h2')!.textContent = 'Арсенал · ' + (LOADOUT_BY_KEY[myLoadout]?.name || '');
+
+  /* Показуємо ВСІ башти фракції, зокрема ще закриті — щоб було видно, до
+     чого готуватись, а не відкривати гру наосліп. Закриті просто не
+     клікаються й підписані хвилею відкриття. */
+  const mine = myTools();
+  let n = 0;
+  for (const tier of [1, 2, 3] as const) {
+    const own = mine.filter(t => t.tier === tier);
+    if (!own.length) continue;
+    const head = document.createElement('div');
+    head.className = 'tierHead';
+    head.dataset.tier = String(tier);
+    head.innerHTML = '<span>' + TIER_NAME[tier] + '</span><i></i>';
+    el.rail.appendChild(head);
+
+    for (const t of own) {
+      n++;
+      const b = document.createElement('button');
+      b.className = 'tool';
+      b.dataset.key = t.key;
+      b.dataset.tier = String(tier);
+      b.style.setProperty('--swatch', C(t.swatch));
+      b.innerHTML =
+        '<span class="key">' + n + '</span>' +
+        '<span class="nm"><b></b><i></i><u></u></span>' +
+        '<span class="cost">' + t.cost + '</span>';
+      b.querySelector('b').textContent = t.name;
+      b.querySelector('i').textContent = t.blurb;
+      b.querySelector('u').textContent = t.cd
+        ? Math.round(t.dmg * TPS / t.cd) + ' шк/с · радіус ' + (t.range / SUB).toFixed(1)
+        : 'перекриває клітину';
+      b.onclick = () => { if (!b.classList.contains('locked')) { tool = t; refreshRail(); } };
+      el.rail.appendChild(b);
+    }
+  }
   const extras: { id: CursorMode; key: string; cls: string; name: string; hint: string; sub: string; mark: string }[] = [
     { id:'up',   key:'U', cls:'', name:'Прокачати', hint:'До 3 рівня: більше шкоди й радіус.', sub:'ціна росте, місце те саме', mark:'▲' },
     { id:'aim',  key:'T', cls:'', name:'Ціль',      hint:'Перший / останній / міцний / слабкий.', sub:'клац по башті — наступний режим', mark:'◎' },
@@ -273,15 +377,39 @@ function drawRail() {
 }
 function refreshRail() {
   const gold = sim.players[meId()].gold;
+  const open = sim.tier();
+  el.rail.querySelectorAll<HTMLElement>('.tierHead').forEach(h => {
+    const tier = +h.dataset.tier!;
+    const locked = tier > open;
+    h.classList.toggle('locked', locked);
+    h.querySelector('i')!.textContent = locked ? 'з хвилі ' + TIER_WAVE[tier] : '';
+  });
   el.rail.querySelectorAll<HTMLElement>('.tool').forEach(b => {
     if (b.dataset.mode) {
       b.setAttribute('aria-pressed', String(tool === b.dataset.mode));
     } else {
-      const t = TOOLS[+b.querySelector('.key').textContent - 1];
+      const t = TOOL_BY_KEY[b.dataset.key!];
+      if (!t) return;
+      const locked = t.tier > open;
+      b.classList.toggle('locked', locked);
       b.setAttribute('aria-pressed', String(tool === t));
-      b.classList.toggle('poor', gold < t.cost);
+      b.classList.toggle('poor', !locked && gold < t.cost);
     }
   });
+  /* Якщо в руці лишилась башта, яку щойно закрили (новий забіг, зміна
+     фракції) — мовчки повертаємось до першої доступної, щоб клік по полю
+     не давав незрозумілу відмову. Без рекурсії: запасну шукаємо серед
+     свідомо доступних і лише перемальовуємо позначки. */
+  if (typeof tool !== 'string' && (tool.tier > open || !toolsOf(myLoadout).includes(tool.key))) {
+    const open_ = myTools().filter(t => t.tier <= open);
+    const fallback = open_.find(t => t.shot) || open_[0];
+    if (fallback && fallback !== tool) {
+      tool = fallback;
+      el.rail.querySelectorAll<HTMLElement>('.tool').forEach(b => {
+        if (!b.dataset.mode) b.setAttribute('aria-pressed', String(b.dataset.key === fallback.key));
+      });
+    }
+  }
 }
 
 /* ── журнал ──────────────────────────────────────────────────────────── */
@@ -321,11 +449,13 @@ cv.addEventListener('mousedown', e => {
 addEventListener('keydown', e => {
   if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'SELECT') return;
   const k = e.key.toLowerCase();
-  if (k >= '1' && k <= '6') { tool = TOOLS[+k - 1]; refreshRail(); }
+  // цифри йдуть по МОЄМУ арсеналу в порядку панелі, а не по глобальному
+  // реєстру — інакше «2» означало б різні башти в різних фракціях
+  if (k >= '1' && k <= '9') { const t = myTools()[+k - 1]; if (t) { tool = t; refreshRail(); } }
   else if (k === '0') { tool = 'raze'; refreshRail(); }
   else if (k === 'u') { tool = 'up'; refreshRail(); }
   else if (k === 't') { tool = 'aim'; refreshRail(); }
-  else if (k === 'escape') { tool = TOOLS[1]; refreshRail(); }
+  else if (k === 'escape') { const t = myTools().find(x => x.shot); if (t) { tool = t; refreshRail(); } }
   else if (k === ' ') { e.preventDefault(); togglePause(); }
   else if (k === 'f') cycleSpeed();
   else if (k === 'n') enqueue({ t:'wave' });
@@ -364,12 +494,24 @@ const readSetup = () => ({
   seed: el.seed.value || 'MAZE-01', diff: parseInt(el.diff.value, 10),
   map: parseInt(el.mapSel.value, 10), mode: parseInt(el.modeSel.value, 10),
   duel: duelAllowed() && el.duel.checked,
+  /* Фракції — по індексу МЕРЕЖЕВОГО гравця, а не «моя/його». Так пара
+     читається однаково в обох, і дошки збираються з того самого. */
+  ars: arsenalPair(),
 });
 function writeSetup(s) {
   if (!s) return;
   el.seed.value = s.seed; el.diff.value = String(s.diff);
   el.mapSel.value = String(s.map | 0); el.modeSel.value = String(s.mode | 0);
   el.duel.checked = !!s.duel;
+  if (s.ars && s.ars.length === 2) {
+    /* Пара від хоста — остаточна. Свій вибір гість уже надіслав ident'ом
+       і «Готовим», тож зазвичай це те саме; але якщо не встигло дійти,
+       краще однакові дошки з чужим вибором, ніж розсинхрон із власним. */
+    const mine = s.ars[netP()], mate = s.ars[1 - netP()];
+    if (LOADOUT_BY_KEY[mine]) { myLoadout = mine; el.loadoutSel.value = mine; }
+    if (LOADOUT_BY_KEY[mate]) mateLoadout = mate;
+    renderFactionCards();
+  }
   updateDuelAvailability();
 }
 function randomSeed() { return 'S' + Math.random().toString(36).slice(2, 8).toUpperCase(); }
@@ -393,6 +535,10 @@ function refreshHostLocks() {
   const midGame = !net.solo && !inLobby;
   const locked = guestSide || midGame;
   for (const c of [el.seed, el.diff, el.mapSel, el.modeSel]) c.disabled = locked;
+  /* Фракція — виняток: це вибір КОЖНОГО гравця, тож гостю вона доступна
+     нарівні з хостом. Замикає її лише початок бою, як і решту. */
+  el.loadoutSel.disabled = midGame;
+  el.loadoutField.classList.toggle('na', midGame);
   el.duel.disabled = locked || !duelAllowed();
   el.restart.disabled = guestSide;
   el.pause.disabled = guestSide;
@@ -433,6 +579,10 @@ function renderLobby() {
   el.veil.className = 'veil lobby';
   el.veilT.textContent = 'Лобі';
   el.veilB.hidden = false; el.veilB2.hidden = true;
+  /* Фракцію обирає кожен свою — навіть гість, якому решта налаштувань
+     заблокована. Це єдине рішення в лобі, що належить особисто йому. */
+  el.veilFactions.hidden = false;
+  renderFactionCards();
   if (net.me === 0) {
     el.veilX.textContent = lobbyText();
     el.veilReady.hidden = false;
@@ -478,7 +628,7 @@ function hostNewGame() {
 }
 function guestSendReady() {
   guestReadyLocal = true;
-  net.send({ t:'ready', seq: myCfgSeq });
+  net.send({ t:'ready', seq: myCfgSeq, lo: myLoadout });
   renderLobby();
 }
 function onHeaderChange() {
@@ -514,7 +664,7 @@ el.verify.onclick = () => {
   }
   const got = shadow.hash();
   const ok = got === want;
-  el.veil.hidden = false;
+  el.veil.hidden = false; el.veilFactions.hidden = true;
   el.veil.className = 'veil verify';
   el.veilReady.hidden = true; el.veilB2.hidden = true; el.veilB.hidden = false;
   el.veilT.textContent = ok ? 'Збіг' : 'Розбіжність';
@@ -537,13 +687,17 @@ net.onCfg = (s, seq) => {
   refreshHostLocks();
   renderLobby();
 };
-net.onReady = seq => {
-  if (seq === lobbyCfgSeq) { guestReadySeq = seq; renderLobby(); }
+net.onReady = m => {
+  // фракція їде і тут теж: «Готовий» — останнє слово гостя перед стартом,
+  // тож саме на цей момент хост має знати остаточний вибір
+  if (m.lo && LOADOUT_BY_KEY[m.lo]) { mateLoadout = m.lo; renderLobby(); renderFactionCards(); }
+  if (m.seq === lobbyCfgSeq) { guestReadySeq = m.seq; renderLobby(); }
 };
 net.onSpeed = v => setSpeed(v / 10, false);   // прийняв від хоста — не відсилаю назад
-net.onIdent = (name, color) => {
-  mateIdent = { name: (name || '').slice(0, 18), color: color || 'steel' };
-  renderRoster(); renderLobby();
+net.onIdent = m => {
+  mateIdent = { name: (m.name || '').slice(0, 18), color: m.color || 'steel' };
+  if (m.lo && LOADOUT_BY_KEY[m.lo]) mateLoadout = m.lo;
+  renderRoster(); renderLobby(); renderFactionCards();
 };
 net.onRestart = (g, s) => {
   writeSetup(s);
@@ -569,6 +723,7 @@ net.onDiag = () => {
       'Спрацює лише в межах однієї мережі.';
 };
 net.onState   = s => {
+  syncPanels();               // панель гравців з'являється в мить з'єднання
   const cls = s === 'live' ? 'live' : s === 'waiting' ? 'waiting' : (s === 'dead' || s === 'stale') ? 'dead' : '';
   el.netState.className = 'netState ' + cls;
   el.netState.innerHTML = '<span class="dot"></span>' +
@@ -850,13 +1005,14 @@ function compareHash(t) {
   if (a === undefined || b === undefined || a === b) return;
   desync = t;
   say('ДЕСИНК на тіку ' + t + ': ' + a + ' ≠ ' + b, 'bad');
-  el.veil.hidden = false;
+  el.veil.hidden = false; el.veilFactions.hidden = true;
   el.veil.className = 'veil lost';
   el.veilReady.hidden = true; el.veilB2.hidden = true;
   el.veilT.textContent = 'Розсинхрон';
   const guestSide = !net.solo && net.me !== 0;
   el.veilX.textContent = 'Тік ' + t + ' · у тебе ' + a + ' · у напарника ' + b + (guestSide ? ' · очікую дій господаря' : '');
   el.veilB.hidden = guestSide;
+  el.veilB.disabled = false;      // лобі могло лишити її вимкненою
   el.veilB.textContent = 'Новий забіг';
   el.veilB.onclick = () => { if (net.solo) boot(); else hostNewGame(); };
 }
@@ -901,7 +1057,7 @@ function digestMate() {
   }
 }
 function showLost() {
-  el.veil.hidden = false;
+  el.veil.hidden = false; el.veilFactions.hidden = true;
   el.veil.className = 'veil lost';
   el.veilReady.hidden = true;
   el.veilT.textContent = 'Оборону зламано';
@@ -998,17 +1154,47 @@ function rosterRows() {
 }
 function renderRoster() {
   if (!sim) return;
-  el.rosterBody.innerHTML = rosterRows().map(r => {
+  const rows = rosterRows();
+  /* Смужка за головним показником — щоб відрив читався оком, без
+     вчитування в цифри. Це і є вся суть панелі в коопі. */
+  const top = Math.max(1, ...rows.map(r => r.kills));
+  el.rosterBody.innerHTML = rows.map((r, i) => {
     const id = identFor(r.p);
-    return '<tr><td><span class="dot" style="background:' + C(paletteCss(id.color)) + '"></span></td>' +
-      '<td>' + escapeHtml(identName(r.p)) + '</td>' +
-      '<td>' + r.hp + '</td><td>' + r.gold + '</td>' +
-      '<td>' + r.kills + '</td><td>' + r.towers + '</td><td>' + r.dmg + '</td></tr>';
+    const lo = LOADOUT_BY_KEY[loadoutOf(r.p)];
+    return '<tr' + (r.p === netP() ? ' class="me"' : '') + '>' +
+      '<td><span class="dot" style="background:' + C(paletteCss(id.color)) + '"></span></td>' +
+      '<td><b>' + escapeHtml(identName(r.p)) + '</b>' +
+        (lo ? '<span class="fx" style="--fc:' + C('--f-' + lo.key) + '">' + escapeHtml(lo.name) + '</span>' : '') +
+        (i === 0 && rows.length > 1 && r.kills > 0 ? '<span class="lead">веде</span>' : '') + '</td>' +
+      '<td class="bar"><span style="width:' + Math.round(r.kills * 100 / top) + '%"></span><u>' + r.kills + '</u></td>' +
+      '<td>' + r.dmg + '</td><td>' + r.towers + '</td>' +
+      '<td class="gold">' + r.gold + '</td><td>' + r.hp + '</td></tr>';
   }).join('');
 }
 
+/* У соло панель гравців не показуємо взагалі: рядок на одного дублював
+   би HP і золото з шапки. Замість неї — три клітини особистої стати
+   прямо в шапці; у коопі вони ховаються, бо там порівняння важливіше
+   за власні числа.
+
+   Викликається і зі зміни стану мережі, і з hud(): панель має з'явитись
+   у мить з'єднання, а не на наступному кадрі анімації. */
+function syncPanels() {
+  const solo = net.solo;
+  el.playersTop.hidden = solo;
+  el.readout.classList.toggle('coop', !solo);
+  if (!solo && sim) renderRoster();
+}
+
 function hud() {
-  renderRoster();
+  const solo = net.solo;
+  syncPanels();
+  if (solo) {
+    const p = sim.players[0];
+    el.kills.textContent  = p.kills;
+    el.towers.textContent = sim.towers.length;
+    el.dmg.textContent    = p.dmg;
+  }
   el.wave.textContent  = sim.wave;
   el.lives.textContent = sim.lives;
   el.lives.className   = 'v' + (sim.lives <= 5 ? ' warn' : '');

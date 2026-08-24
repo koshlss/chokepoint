@@ -57,6 +57,10 @@
   --r: 3px;
 }
 *{box-sizing:border-box}
+/* Блоки нижче задають display (flex/grid), а це перебиває стандартне
+   [hidden]{display:none} — і елемент лишається видимим попри hidden.
+   Саме так панель гравців світилась у соло. */
+[hidden]{display:none !important}
 body{
   margin:0; background:var(--ink); color:var(--text);
   font-family:var(--body); font-size:14px; line-height:1.5;
@@ -108,8 +112,44 @@ button:disabled:hover{background:var(--panel); border-color:var(--line)}
 .stat .v.calm{color:var(--steel)}
 .stat .v small{font-size:12px; color:var(--text-faint)}
 
+/* У коопі особиста стата ховається з шапки — там важливіше порівняння,
+   і воно живе в панелі гравців нижче. */
+.readout.coop .stat.solo{display:none}
+.stat.wide .v{font-size:15px}
+
 .playersTop{background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
   padding:9px 12px; display:flex; flex-direction:column; gap:7px}
+
+/* ─── картки фракцій ─── */
+.factions{display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:8px;
+  width:100%; max-width:760px; margin:4px 0 2px}
+.fcard{
+  display:flex; flex-direction:column; gap:5px; align-items:flex-start; text-align:left;
+  background:var(--panel); border:1px solid var(--line); border-top:2px solid var(--fc,var(--line));
+  border-radius:var(--r); padding:9px 10px; cursor:pointer;
+  font-family:var(--body); text-transform:none; letter-spacing:0;
+}
+.fcard:hover{background:var(--panel-hi)}
+.fcard[aria-pressed=true]{border-color:var(--fc); background:#16232B;
+  box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--fc) 45%, transparent)}
+.fcard b{font-family:var(--display); font-size:15px; letter-spacing:.04em; color:var(--fc)}
+.fcard i{font-style:normal; font-size:11.5px; line-height:1.35; color:var(--text-dim)}
+.fcard .tierRow{display:flex; flex-wrap:wrap; gap:4px; align-items:center; margin-top:1px}
+.fcard .tierTag{font-family:var(--display); font-size:9px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--text-faint); min-width:52px}
+.fcard .tierTag i{font-size:9px; color:var(--text-faint); opacity:.75}
+.fcard .pip{font-size:10.5px; color:var(--text-dim); border:1px solid var(--line);
+  border-left:2px solid var(--sw,var(--line)); border-radius:2px; padding:1px 5px; white-space:nowrap}
+
+/* ─── рівні в арсеналі ─── */
+.tierHead{display:flex; align-items:baseline; justify-content:space-between; gap:6px;
+  font-family:var(--display); font-size:9.5px; letter-spacing:.18em; text-transform:uppercase;
+  color:var(--text-faint); margin:7px 0 1px}
+.tierHead:first-of-type{margin-top:0}
+.tierHead i{font-style:normal; letter-spacing:.06em; text-transform:none; opacity:.8}
+.tierHead.locked{color:var(--text-faint); opacity:.7}
+.tool.locked{opacity:.42; cursor:not-allowed; filter:saturate(.35)}
+.tool.locked:hover{background:var(--panel)}
 
 /* ─── головна сітка ─── */
 .main{display:grid; grid-template-columns:236px minmax(0,1fr); gap:14px; align-items:start}
@@ -245,3 +285,26 @@ table.roster td{padding:5px 6px; border-top:1px solid var(--line-soft); text-ali
 table.roster td:nth-child(2){text-align:left; font-family:var(--body); color:var(--text); font-weight:600}
 table.roster .dot{display:inline-block; width:9px; height:9px; border-radius:50%}
 table.roster tr:first-child td{color:var(--text)}
+
+/* Компактніше й читабельніше для порівняння двох: свій рядок підсвічено,
+   а відрив за головним показником видно смужкою, без вчитування в цифри. */
+table.roster td{padding:4px 6px}
+/* саме background-color, а не скорочення: інакше воно стирає доріжку
+   смужки, яку td.bar малює фоновим зображенням */
+table.roster tr.me td{background-color:#151F26}
+table.roster td:nth-child(2){display:flex; align-items:baseline; gap:6px; flex-wrap:wrap}
+table.roster .fx{font-family:var(--display); font-size:9px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--fc,var(--text-faint)); font-weight:600}
+table.roster .lead{font-family:var(--display); font-size:8.5px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--bg); background:var(--brass); border-radius:2px; padding:1px 4px}
+/* Доріжка — фон комірки, заповнення — сам span; ширину йому дає JS
+   у відсотках від лідера, тому тут її чіпати не можна. */
+table.roster td.bar{position:relative; min-width:74px;
+  background-image:linear-gradient(var(--line),var(--line));
+  background-size:calc(100% - 12px) 2px; background-position:6px calc(100% - 2px);
+  background-repeat:no-repeat}
+table.roster td.bar span{position:absolute; left:6px; bottom:2px; height:2px;
+  max-width:calc(100% - 12px); background:var(--brass); border-radius:1px}
+table.roster tr.me td.bar span{background:var(--brass)}
+table.roster td.bar u{text-decoration:none}
+table.roster td.gold{color:var(--brass)}
