@@ -207,7 +207,11 @@ class Sim {
       range:  ((b.range * u.range) / 100) | 0,
       shot:   b.shot,
       splash: b.splash ? ((b.splash * u.range) / 100) | 0 : 0,
-      slow:   b.slow ? Math.min(70, b.slow + (t.lvl - 1) * 6) : 0,
+      spread: b.spread ? ((b.spread * u.range) / 100) | 0 : 0,
+      /* Стеля 70% боронить від «вічно стоїть» на звичайному морозі, але
+         повну заморозку вона б мовчки скасувала — та й перестала б бути
+         повною. Тому 100 проходить як є. */
+      slow:   b.slow ? (b.slow >= 100 ? 100 : Math.min(70, b.slow + (t.lvl - 1) * 6)) : 0,
       slowT:  b.slowT | 0,
       dot:    b.dot ? ((b.dot * u.dmg) / 100) | 0 : 0,
       dotT:   b.dotT | 0,
@@ -536,7 +540,7 @@ class Sim {
       t.ax = tgt.x - cx; t.ay = tgt.y - cy;      // напрям ствола цілими; кут рахує рендер
       this.shots.push({
         x:cx, y:cy, px:cx, py:cy, tid:tgt.id, k:t.k, owner:t.owner,
-        dmg:st.dmg, sp:st.shot, splash:st.splash,
+        dmg:st.dmg, sp:st.shot, splash:st.splash, spread:st.spread,
         slow:st.slow, slowT:st.slowT, dot:st.dot, dotT:st.dotT,
       });
     }
@@ -610,9 +614,16 @@ class Sim {
        Тепер уповільнення діє SLOW_T тіків із SLOW_T + SLOW_IMMUNE, тобто
        сталу частку часу незалежно від щільності траси. Відсоток лишається
        відчутним — обмежена саме тривалість, а не сила. */
-    if (s.slow > 0 && c.slowT <= 0 && c.slowImm <= 0) {
-      c.slowP = s.slow;
-      c.slowT = s.slowT;
+    if (s.slow > 0) {
+      if (c.slowT <= 0 && c.slowImm <= 0) {
+        c.slowP = s.slow;
+        c.slowT = s.slowT;
+      } else if (c.slowT > 0 && s.slow > c.slowP) {
+        /* Сильніше перебиває слабше, але НЕ продовжує тривалість. Інакше
+           дешевий частий мороз блокував би власну повну заморозку тієї ж
+           фракції — та сама анти-синергія, що колись була в отрути. */
+        c.slowP = s.slow;
+      }
     }
     /* Отрута НАКОПИЧУЄТЬСЯ, але не безмежно: до подвійної сили
        найпотужнішого джерела на цій цілі.
@@ -652,6 +663,22 @@ class Sim {
     } else {
       this.affect(tgt, s);
       this.hurt(tgt, s.dmg, s.owner);
+    }
+
+    /* Поширення ефекту без шкоди — окрема вісь від площі. Башта може
+       бити одну ціль, а студити всіх поруч; саме на цьому побудована
+       Крига. Порядок обходу сталий, тож детермінізм зберігається. */
+    if (s.spread > 0) {
+      const r2 = s.spread * s.spread;
+      const near = [];
+      for (const c of this.creeps) {
+        if (c === tgt) continue;
+        const dx = c.x - s.x, dy = c.y - s.y;
+        if (dx * dx + dy * dy <= r2) near.push(c);
+      }
+      near.sort((a, b) => a.id - b.id);
+      for (const c of near) this.affect(c, s);
+      if (near.length) this.events.push({ e:'chill', x:s.x, y:s.y, r:s.spread });
     }
   }
 

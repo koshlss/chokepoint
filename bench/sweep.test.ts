@@ -6,7 +6,7 @@ import { writeFileSync } from 'node:fs';
 import { runOne, mixFor, type RunResult } from '../tests/bot';
 import { MAPS } from '../src/content/maps';
 import { MODE_MAZE, MODE_FIXED } from '../src/sim/constants';
-import { LOADOUTS } from '../src/content/loadouts';
+import { COMBOS, toolsOf } from '../src/content/loadouts';
 
 const RUNS = Number(process.env.BENCH_RUNS || 10);
 const MAX  = Number(process.env.BENCH_MAX  || 22);
@@ -22,7 +22,7 @@ function stats(rs: RunResult[]) {
 
 function table(rows: [string, ReturnType<typeof stats>][]) {
   const head = ['', 'хвиля min', 'сер.', 'макс', 'загиб', 'життів'];
-  const w = [Math.max(...rows.map(r => r[0].length), head[0].length), 9, 5, 5, 6, 7];
+  const w = [Math.max(...rows.map(r => r[0].length), head[0].length, 18), 9, 5, 5, 6, 7];
   const line = (c: string[]) => c.map((s, i) => s.padEnd(w[i])).join('  ');
   const out = [line(head), line(w.map(n => '─'.repeat(n)))];
   for (const [name, s] of rows)
@@ -47,22 +47,24 @@ it(`баланс: ${RUNS} забігів до хвилі ${MAX}`, () => {
   }
 }, 600000);
 
-it('баланс фракцій', () => {
+/* Одиниця балансу — КОМБІНАЦІЯ основної й допоміжної, а не фракція
+   окремо: гравець ніколи не грає однією. */
+it('баланс комбінацій', () => {
   for (const mode of [MODE_FIXED, MODE_MAZE]) {
     const rows: [string, ReturnType<typeof stats>][] = [];
-    for (const lo of LOADOUTS) {
-      const mix = mixFor(lo.tools);
+    for (const c of COMBOS) {
+      const mix = mixFor(toolsOf(c.primary.key, c.support.key));
       if (!mix.length) continue;
       const rs: RunResult[] = [];
       for (let map = 0; map < MAPS.length; map++) {
         const per: RunResult[] = [];
         for (let i = 0; i < RUNS; i++)
           per.push(runOne(map, mode, 'BENCH-' + i, { maxWave: MAX, mix }));
-        rows.push(['  ' + lo.name + ' · ' + MAPS[map].name, stats(per)]);
+        rows.push(['  ' + MAPS[map].name, stats(per)]);
         rs.push(...per);
       }
-      rows.push([lo.name + ' — разом', stats(rs)]);
+      rows.push([c.name, stats(rs)]);
     }
-    emit(`\n══ ФРАКЦІЇ · ${mode === MODE_FIXED ? 'ФІКСОВАНИЙ ШЛЯХ' : 'ЛАБІРИНТ'} ══\n` + table(rows));
+    emit(`\n══ КОМБІНАЦІЇ · ${mode === MODE_FIXED ? 'ФІКСОВАНИЙ ШЛЯХ' : 'ЛАБІРИНТ'} ══\n` + table(rows));
   }
 }, 900000);

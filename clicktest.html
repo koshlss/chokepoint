@@ -111,32 +111,68 @@ window.addEventListener('load', async () => {
   n.setState('off');
   await new Promise(r => setTimeout(r, 150));
 
-  /* 0е. Фракції: вибір, власний арсенал, замки за рівнями. */
-  for (const id of ['loadoutSel','veilFactions'])
+  /* 0е. Фракції: гравець бере ОДНУ основну й ОДНУ допоміжну. */
+  for (const id of ['primarySel','supportSel','veilFactions'])
     check('є елемент #' + id, !!d.getElementById(id));
   const cards = d.querySelectorAll('.fcard');
   check('картки фракцій побудовані', cards.length === 4, cards.length + ' шт');
+  check('картки згруповані за роллю', d.querySelectorAll('.fgroup').length === 2);
   const railKeys = () => [...d.querySelectorAll('#rail .tool')].map(b => b.dataset.key).filter(Boolean);
+  const pick = async k => { d.querySelector('.fcard[data-lo="' + k + '"]').click();
+                            await new Promise(r => setTimeout(r, 200)); };
+
   errs.length = 0;
-  const iceCard = d.querySelector('.fcard[data-lo="ice"]');
-  if (iceCard) iceCard.click();
-  await new Promise(r => setTimeout(r, 200));
+  await pick('steel'); await pick('ice');
   check('вибір фракції не кидає помилок', errs.length === 0, errs.join(' | '));
-  const ice = railKeys();
-  check('арсенал змінився на фракційний', ice.indexOf('frost') >= 0 && ice.indexOf('arrow') < 0, ice.join(','));
-  // картки перемальовуються цілком, тож старе посилання вказує на вилучений
-  // вузол — питати треба заново
-  check('картку обраної фракції позначено',
+  const si = railKeys();
+  check('арсенал = основна + допоміжна',
+        si.indexOf('arrow') >= 0 && si.indexOf('frost') >= 0 &&
+        si.indexOf('ember') < 0 && si.indexOf('venom') < 0, si.join(','));
+  // картки перемальовуються цілком, тож старе посилання вказує на вилучений вузол
+  check('обрані картки позначено',
+        d.querySelector('.fcard[data-lo="steel"]').getAttribute('aria-pressed') === 'true' &&
         d.querySelector('.fcard[data-lo="ice"]').getAttribute('aria-pressed') === 'true');
+
+  /* Зміна допоміжної не має чіпати основну — і навпаки. */
+  await pick('toxic');
+  const st = railKeys();
+  check('зміна допоміжної лишає основну на місці',
+        st.indexOf('arrow') >= 0 && st.indexOf('venom') >= 0 && st.indexOf('frost') < 0, st.join(','));
+  await pick('fire');
+  const ft = railKeys();
+  check('зміна основної лишає допоміжну на місці',
+        ft.indexOf('ember') >= 0 && ft.indexOf('venom') >= 0 && ft.indexOf('arrow') < 0, ft.join(','));
+
   const locked = [...d.querySelectorAll('#rail .tool.locked')].map(b => b.dataset.key);
-  check('на старті закриті середні й топові', locked.indexOf('glacier') >= 0 && locked.indexOf('hail') >= 0, locked.join(','));
+  const open   = railKeys().filter(k => locked.indexOf(k) < 0);
+  check('на старті відкриті лише базові', locked.length > 0 && open.length > 0,
+        'відкрито ' + open.join(',') + ' · закрито ' + locked.join(','));
   check('рівні підписані хвилею відкриття',
         [...d.querySelectorAll('.tierHead')].some(h => h.textContent.indexOf('з хвилі') >= 0));
   check('на нульовій хвилі відкрито лише перший рівень', w.CHOKEPOINT.sim.tier() === 1);
-  const steelCard = d.querySelector('.fcard[data-lo="steel"]');
-  if (steelCard) steelCard.click();
-  await new Promise(r => setTimeout(r, 200));
-  check('фракція перемикається назад', railKeys().indexOf('arrow') >= 0);
+  await pick('steel'); await pick('ice');
+  check('вибір повертається назад', railKeys().indexOf('arrow') >= 0);
+
+  /* Радіус — навчальний костур: лише на легкому. Поза ним не має бути ні
+     цифри в описі, ні самого тумблера. */
+  const diffSel = d.getElementById('diff');
+  // саме рядки характеристик башт, а не вся панель: підказки керування
+  // можуть містити слово «радіус» самі по собі
+  const statText = () => [...d.querySelectorAll('#rail .tool u')].map(n => n.textContent).join(' ');
+  const rangeLabel = () => d.getElementById('showRange').closest('label');
+  diffSel.value = '70';
+  diffSel.dispatchEvent(new w.Event('change'));
+  check('на легкому радіус видно', await until(() => statText().indexOf('радіус') >= 0));
+  check('на легкому тумблер радіуса є', await until(() => rangeLabel().hidden === false));
+  diffSel.value = '100';
+  diffSel.dispatchEvent(new w.Event('change'));
+  check('на нормі радіуса в описі немає', await until(() => statText().indexOf('радіус') < 0));
+  check('на нормі тумблера радіуса немає', await until(() => rangeLabel().hidden === true));
+  diffSel.value = '145';
+  diffSel.dispatchEvent(new w.Event('change'));
+  check('на важкому радіуса теж немає', await until(() => statText().indexOf('радіус') < 0));
+  diffSel.value = '100';
+  diffSel.dispatchEvent(new w.Event('change'));
 
   /* Бар'єр на фіксованій трасі не робить нічого (перевірено прогоном:
      375 штук не змінили ні довжину траси, ні жодного життя), тож там його

@@ -6,7 +6,7 @@ import { writeFileSync } from 'node:fs';
 import { runOne, mixFor } from '../tests/bot';
 import { MAPS } from '../src/content/maps';
 import { MODE_MAZE, MODE_FIXED } from '../src/sim/constants';
-import { LOADOUTS } from '../src/content/loadouts';
+import { COMBOS, toolsOf } from '../src/content/loadouts';
 import { waveSpec, KIND_NAME } from '../src/content/waves';
 
 const RUNS = Number(process.env.BENCH_RUNS || 10);

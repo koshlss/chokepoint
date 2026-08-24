@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { Sim } from '../src/sim/sim';
 import { MODE_FIXED, MODE_MAZE } from '../src/sim/constants';
-import { LOADOUTS, LOADOUT_BY_KEY, FULL_ARSENAL, mergeLoadouts, toolsOf } from '../src/content/loadouts';
+import { LOADOUTS, LOADOUT_BY_KEY, PRIMARIES, SUPPORTS, COMBOS, PRIMARY_SHAPE, SUPPORT_SHAPE, FULL_ARSENAL, toolsOf } from '../src/content/loadouts';
 import { TIER_WAVE } from '../src/content/types';
 import { TOOL_BY_KEY, TOOLS } from '../src/content/towers';
 
@@ -36,11 +36,7 @@ describe('фракції', () => {
     }
   });
 
-  it('бар\'єр є в кожній — інакше фракція відбирає режим «Лабіринт»', () => {
-    for (const lo of LOADOUTS) expect(lo.tools, lo.key).toContain('wall');
-  });
-
-  it('у кожній є дешева рання башта', () => {
+  it('у кожній фракції є дешева стартова башта', () => {
     // без неї набір гине на 7-й хвилі незалежно від майстерності:
     // стартових 500 не вистачає, щоб щось поставити до перших хвиль
     for (const lo of LOADOUTS) {
@@ -59,13 +55,15 @@ describe('фракції', () => {
   });
 
   it('без фракції не обмежує вибір — але рівні відкриваються все одно', () => {
-    // свіжа партія на кожну башту: усі поспіль не влізли б у стартове золото.
-    // Режим беремо той, де башта взагалі має сенс: бар'єр існує лише в лабіринті
+    // свіжа партія на кожну башту; золото видаємо, бо топові навмисно
+    // дорожчі за стартові 500. Режим беремо той, де башта має сенс:
+    // бар'єр існує лише в лабіринті.
     for (const t of TOOLS) {
       const mode = t.mazeOnly ? MODE_MAZE : MODE_FIXED;
       const sim: any = new Sim('L-1', 100, 1, 0, mode);
       expect(sim.arsenals).toBeNull();
       sim.wave = TIER_WAVE[t.tier];
+      sim.players[0].gold = 99999;
       expect(tryBuild(sim, 0, t.key), t.key).toBe(true);
     }
   });
@@ -92,84 +90,190 @@ describe('фракції', () => {
     expect(tryBuild(sim, 0, 'wall')).toBe(true);
   });
 
-  it('фракція дозволяє своє й відмовляє чужому', () => {
-    const sim: any = new Sim('L-2', 100, 1, 0, MODE_FIXED, [toolsOf('ice')]);
-    expect(tryBuild(sim, 0, 'rime'), 'rime у Криги').toBe(true);
-    expect(tryBuild(sim, 0, 'ember'), 'ember не в Кризі').toBe(false);
+  it('комбінація дозволяє своє й відмовляє чужому', () => {
+    const sim: any = new Sim('L-2', 100, 1, 0, MODE_FIXED, [toolsOf('steel', 'ice')]);
+    expect(tryBuild(sim, 0, 'arrow'), 'arrow зі Сталі').toBe(true);
+    expect(tryBuild(sim, 0, 'frost'), 'frost із Криги').toBe(true);
+    expect(tryBuild(sim, 0, 'ember'), 'ember із чужої основної').toBe(false);
+    expect(tryBuild(sim, 0, 'venom'), 'venom із чужої допоміжної').toBe(false);
     const why = sim.events.filter((e: any) => e.e === 'deny').map((e: any) => e.why);
     expect(why).toContain('не у твоїй фракції');
   });
 
-  it('у гравців можуть бути різні фракції на одній дошці', () => {
-    const sim: any = new Sim('L-3', 100, 2, 0, MODE_FIXED, [toolsOf('fire'), toolsOf('toxic')]);
+  it('у гравців можуть бути різні комбінації на одній дошці', () => {
+    const sim: any = new Sim('L-3', 100, 2, 0, MODE_FIXED,
+                             [toolsOf('fire', 'toxic'), toolsOf('steel', 'ice')]);
     expect(tryBuild(sim, 0, 'ember')).toBe(true);
     expect(tryBuild(sim, 1, 'ember')).toBe(false);
-    expect(tryBuild(sim, 1, 'spore')).toBe(true);
-    expect(tryBuild(sim, 0, 'spore')).toBe(false);
+    expect(tryBuild(sim, 1, 'arrow')).toBe(true);
+    expect(tryBuild(sim, 0, 'arrow')).toBe(false);
   });
 
   it('відмова нічого не коштує гравцю', () => {
-    const sim: any = new Sim('L-4', 100, 1, 0, MODE_FIXED, [toolsOf('ice')]);
+    const sim: any = new Sim('L-4', 100, 1, 0, MODE_FIXED, [toolsOf('steel', 'ice')]);
     const gold = sim.players[0].gold;
-    tryBuild(sim, 0, 'rail');
+    tryBuild(sim, 0, 'venom');
     expect(sim.players[0].gold).toBe(gold);
   });
 
-  it('«стартовий + набутий» — об\'єднання, порядок відкриття не впливає', () => {
-    const ab = mergeLoadouts(['ice', 'fire']);
-    const ba = mergeLoadouts(['fire', 'ice']);
-    expect(ab).toEqual(ba);
-    expect(ab).toContain('frost');
-    expect(ab).toContain('ember');
-    expect(ab.length).toBeLessThanOrEqual(FULL_ARSENAL.length);
+  it('порядок вибору не впливає на арсенал', () => {
+    expect(toolsOf('steel', 'ice')).toEqual(toolsOf('steel', 'ice'));
+    expect(toolsOf('fire', 'toxic').length).toBe(toolsOf('steel', 'ice').length);
   });
 
-  it('об\'єднане набуте дозволяє те, чого не давав стартовий', () => {
-    const sim: any = new Sim('L-5', 100, 1, 0, MODE_FIXED, [mergeLoadouts(['ice', 'fire'])]);
-    expect(tryBuild(sim, 0, 'rime')).toBe(true);
-    expect(tryBuild(sim, 0, 'ember')).toBe(true);
+  it('усі комбінації дають однакову кількість башт', () => {
+    const sizes = COMBOS.map(c => toolsOf(c.primary.key, c.support.key).length);
+    expect(new Set(sizes).size, 'розміри: ' + sizes.join(',')).toBe(1);
   });
 
-  it('невідомий ключ ігнорується, а не валить гру', () => {
-    expect(mergeLoadouts(['ice', 'нема-такого'])).toEqual(mergeLoadouts(['ice']));
-    expect(toolsOf('нема-такого')).toEqual(toolsOf('steel'));
+  it('невідомий чи переплутаний ключ падає на типовий, а не валить гру', () => {
+    expect(toolsOf('нема-такого', 'ice')).toEqual(toolsOf('steel', 'ice'));
+    // допоміжну не можна підсунути замість основної
+    expect(toolsOf('ice', 'ice')).toEqual(toolsOf('steel', 'ice'));
+    expect(toolsOf('steel', 'steel')).toEqual(toolsOf('steel', 'ice'));
+  });
+});
+
+describe('будова «основна + допоміжна»', () => {
+  it('рівно дві основні й дві допоміжні', () => {
+    expect(PRIMARIES.length).toBe(2);
+    expect(SUPPORTS.length).toBe(2);
+    expect(COMBOS.length).toBe(4);
+  });
+
+  const shapeOf = (lo: any) => {
+    const own = lo.tools.map((k: string) => TOOL_BY_KEY[k]).filter((t: any) => t.shot);
+    return [1, 2, 3].map(t => own.filter((x: any) => x.tier === t).length);
+  };
+
+  it('усі основні мають однакову будову', () => {
+    for (const p of PRIMARIES) expect(shapeOf(p), p.key).toEqual(PRIMARY_SHAPE);
+  });
+
+  it('усі допоміжні мають однакову будову', () => {
+    for (const s of SUPPORTS) expect(shapeOf(s), s.key).toEqual(SUPPORT_SHAPE);
+  });
+
+  it('бар\'єр дає основна — допоміжна його не приносить', () => {
+    for (const p of PRIMARIES) expect(p.tools, p.key).toContain('wall');
+    for (const s of SUPPORTS) expect(s.tools, s.key).not.toContain('wall');
+  });
+
+  it('обидві допоміжні сповільнюють, але по-різному', () => {
+    const ice = SUPPORTS.find(s => s.key === 'ice')!.tools.map(k => TOOL_BY_KEY[k]);
+    const tox = SUPPORTS.find(s => s.key === 'toxic')!.tools.map(k => TOOL_BY_KEY[k]);
+    // Крига: коротко й жорстко — є повна заморозка, коротка тривалість
+    expect(Math.max(...ice.map(t => t.slow || 0)), 'Крига має повну заморозку').toBe(100);
+    // Отрута: довго й м'яко — слабший мороз, зате втричі довший
+    const toxSlow = tox.filter(t => t.slow);
+    expect(toxSlow.length, 'Отрута теж сповільнює').toBeGreaterThan(0);
+    expect(Math.max(...toxSlow.map(t => t.slow!)), 'але не заморожує').toBeLessThan(100);
+    expect(Math.max(...toxSlow.map(t => t.slowT!)), 'зате надовго')
+      .toBeGreaterThan(Math.max(...ice.map(t => t.slowT || 0)));
+  });
+
+  it('лише Отрута б\'є крізь броню', () => {
+    const tox = SUPPORTS.find(s => s.key === 'toxic')!.tools.map(k => TOOL_BY_KEY[k]);
+    const ice = SUPPORTS.find(s => s.key === 'ice')!.tools.map(k => TOOL_BY_KEY[k]);
+    expect(tox.every(t => t.dot), 'кожна вежа Отрути труїть').toBe(true);
+    expect(ice.some(t => t.dot), 'Крига не труїть').toBe(false);
+  });
+
+  it('арсенал росте однаково в усіх комбінаціях', () => {
+    const want = [0, 1, 2].map(i => PRIMARY_SHAPE[i] + SUPPORT_SHAPE[i]);
+    for (const c of COMBOS) {
+      const own = toolsOf(c.primary.key, c.support.key)
+        .map(k => TOOL_BY_KEY[k]).filter(t => t.shot);
+      const upTo = (tier: number) => own.filter(t => t.tier <= tier).length;
+      expect(upTo(1), c.name + ' на старті').toBe(want[0]);
+      expect(upTo(2), c.name + ' після хвилі 5').toBe(want[0] + want[1]);
+      expect(upTo(3), c.name + ' після хвилі 12').toBe(want[0] + want[1] + want[2]);
+    }
+  });
+
+  /* Найдорожча базова навмисно поза межами стартового золота — перші
+     хвилі на неї заробляють, і вона працює як ціль, а не як покупка
+     з першого кліку. */
+  it('найдорожча базова не по кишені на старті', () => {
+    for (const c of COMBOS) {
+      const base = toolsOf(c.primary.key, c.support.key)
+        .map(k => TOOL_BY_KEY[k]).filter(t => t.shot && t.tier === 1);
+      const cheapest = Math.min(...base.map(t => t.cost));
+      const dearest  = Math.max(...base.map(t => t.cost));
+      expect(cheapest, c.name + ': найдешевша має бути одразу доступна').toBeLessThan(120);
+      expect(dearest,  c.name + ': найдорожча базова має бути ціллю').toBeGreaterThan(120);
+    }
+  });
+
+  const dps = (t: any) => t.dmg * 30 / t.cd;
+  const armed = (c: any) => toolsOf(c.primary.key, c.support.key)
+    .map(k => TOOL_BY_KEY[k]).filter(t => t.shot);
+
+  /* Абсолютна шкода з ОДНІЄЇ башти росте — інакше, коли хороші клітини
+     скінчились, додати шкоди нічим. */
+  it('кожен наступний рівень б\'є помітно сильніше з однієї башти', () => {
+    for (const c of COMBOS) {
+      const best = (tier: number) => Math.max(...armed(c).filter(t => t.tier === tier).map(dps));
+      expect(best(2), `${c.name}: середні проти базових`).toBeGreaterThan(best(1) * 1.7);
+      expect(best(3), `${c.name}: топові проти середніх`).toBeGreaterThan(best(2) * 1.7);
+    }
+  });
+
+  /* А от віддача на золото має лишатись приблизно рівною. Якби вона
+     росла з рівнем, вибір зникав би: нова вежа була б просто краща, і
+     гра сама б диктувала, що ставити. Рівна віддача робить рішення
+     ситуативним — багато місця й мало золота тягне до дешевих, мало
+     місця й багато золота до дорогих. */
+  it('віддача на золото не росте з рівнем', () => {
+    for (const c of COMBOS) {
+      const eff = (tier: number) => {
+        const own = armed(c).filter(t => t.tier === tier);
+        return own.reduce((a, t) => a + dps(t) / t.cost, 0) / own.length;
+      };
+      const [e1, e2, e3] = [eff(1), eff(2), eff(3)];
+      const label = `${c.name}: ${e1.toFixed(2)} / ${e2.toFixed(2)} / ${e3.toFixed(2)}`;
+      expect(e2, label + ' — середні вигідніші за базові').toBeLessThanOrEqual(e1 * 1.15);
+      expect(e3, label + ' — топові вигідніші за середні').toBeLessThanOrEqual(e2 * 1.25);
+    }
   });
 });
 
 describe('рівні башт', () => {
-  it('будова однакова в кожної фракції: дві базові, одна середня, одна топова', () => {
-    for (const lo of LOADOUTS) {
-      const own = lo.tools.filter(k => k !== 'wall').map(k => TOOL_BY_KEY[k]);
-      const byTier = [1, 2, 3].map(t => own.filter(x => x.tier === t).length);
-      expect(byTier, lo.key).toEqual([2, 1, 1]);
+  it('вхідний поріг у всіх комбінацій співмірний', () => {
+    // інакше комбінації розходяться вже на старті через різну ціну входу,
+    // і жоден баланс пізніх хвиль цього не наздожене
+    for (const tier of [1, 2, 3] as const) {
+      const costs = COMBOS.map(c =>
+        toolsOf(c.primary.key, c.support.key)
+          .map(k => TOOL_BY_KEY[k])
+          .filter(t => t.shot && t.tier === tier)
+          .reduce((a, t) => a + t.cost, 0));
+      const min = Math.min(...costs), max = Math.max(...costs);
+      expect(max - min, `рівень ${tier}: від ${min} до ${max}`).toBeLessThanOrEqual(60);
     }
   });
 
-  it('однакові рівні коштують співмірно в усіх фракціях', () => {
-    // інакше фракції розходяться вже на старті через різний вхід, і жоден
-    // баланс пізніх хвиль цього не наздожене
-    for (const tier of [1, 2, 3] as const) {
-      const costs = LOADOUTS.map(lo =>
-        lo.tools.filter(k => k !== 'wall' && TOOL_BY_KEY[k].tier === tier)
-                .reduce((a, k) => a + TOOL_BY_KEY[k].cost, 0));
-      const min = Math.min(...costs), max = Math.max(...costs);
-      expect(max - min, `рівень ${tier}: від ${min} до ${max}`).toBeLessThanOrEqual(50);
-    }
-  });
+  // золото видаємо всюди: середні й топові навмисно дорожчі за стартові 500,
+  // і без цього тест міряв би гаманець, а не відкриття рівнів
+  const rich = (seed: string) => {
+    const sim: any = new Sim(seed, 100, 1, 0, MODE_FIXED);
+    sim.players[0].gold = 99999;
+    return sim;
+  };
 
   it('на старті доступний лише перший рівень', () => {
-    const sim: any = new Sim('T-1', 100, 1, 0, MODE_FIXED);
+    const sim = rich('T-1');
     expect(sim.tier()).toBe(1);
-    expect(tryBuild(sim, 0, 'arrow'), 'базова').toBe(true);
-    expect(tryBuild(sim, 0, 'mortar'), 'середня зарано').toBe(false);
-    expect(tryBuild(sim, 0, 'rail'), 'топова зарано').toBe(false);
+    expect(tryBuild(sim, 0, 'arrow'),  'базова').toBe(true);
+    expect(tryBuild(sim, 0, 'lance'),  'середня зарано').toBe(false);
+    expect(tryBuild(sim, 0, 'rail'),   'топова зарано').toBe(false);
   });
 
   it('рівні відкриваються з відповідних хвиль', () => {
-    const sim: any = new Sim('T-2', 100, 1, 0, MODE_FIXED);
+    const sim = rich('T-2');
     sim.wave = TIER_WAVE[2];
     expect(sim.tier()).toBe(2);
-    expect(tryBuild(sim, 0, 'mortar')).toBe(true);
+    expect(tryBuild(sim, 0, 'lance')).toBe(true);
     expect(tryBuild(sim, 0, 'rail'), 'топова ще зарано').toBe(false);
     sim.wave = TIER_WAVE[3];
     expect(sim.tier()).toBe(3);
@@ -185,7 +289,7 @@ describe('рівні башт', () => {
 
   it('рівень залежить лише від хвилі — тож однаковий в усіх без синхронізації', () => {
     const a: any = new Sim('T-4', 100, 1, 0, MODE_FIXED);
-    const b: any = new Sim('T-4', 100, 1, 0, MODE_FIXED, [toolsOf('fire')]);
+    const b: any = new Sim('T-4', 100, 1, 0, MODE_FIXED, [toolsOf('fire', 'toxic')]);
     for (const w of [0, 4, 5, 9, 10, 20]) {
       a.wave = w; b.wave = w;
       expect(a.tier(), 'хвиля ' + w).toBe(b.tier());

@@ -1,22 +1,25 @@
 import { TOOL_BY_KEY } from './towers';
-import type { Loadout, ToolKey } from './types';
+import type { Loadout, Role, ToolKey } from './types';
 
 /* ══════════════════════════════════════════════════════════════════════
-   ФРАКЦІЇ
+   ФРАКЦІЇ: ОСНОВНА + ДОПОМІЖНА
 
-   Чотири неперетинні арсенали. Спільний у них лише бар'єр — він не
-   башта, а сам засіб мазингу: набір без нього не давав би характеру,
-   а відбирав би режим «Лабіринт».
+   Гравець бере рівно одну основну й одну допоміжну. Основна дає хребет
+   шкоди, допоміжна — контроль. Комбінацій виходить (основні × допоміжні),
+   і саме вони, а не окремі фракції, є одиницею балансу.
 
-   Набір не заводить власних башт, а дозволяє підмножину спільного
-   реєстру. Тому ключ 'venom' означає той самий Токсин у всіх, команда
-   build лишається однозначною по дроту, а «стартовий + набутий» — це
-   просто об'єднання множин, яке можна розширювати під час партії.
+   Будова однакова в кожної комбінації — це й робить їх порівнюваними:
 
-   Кожна фракція обов'язково має дешеву ранню башту. Це не смак:
-   прогін показав, що набір із самих дорогих гине на 7-й хвилі
-   незалежно від майстерності — стартових 500 золота просто не
-   вистачає, щоб щось поставити до перших хвиль.
+     старт      3 основної + 2 допоміжної = 5   (45 … 170 золота)
+     хвиля 5    +2 основної, +1 допоміжної = 3  (260 … 380)
+     хвиля 12   +1 основної, +1 допоміжної = 2  (600 … 620)
+
+   Разом десять. Найдорожча базова навмисно поза межами стартового
+   золота — перші хвилі на неї заробляють.
+
+   Обидві допоміжні сповільнюють, але протилежно:
+     Крига  — коротко й жорстко: часті слабкі постріли, повна заморозка
+     Отрута — довго й м'яко: в'язко, масово, крізь броню
    ══════════════════════════════════════════════════════════════════════ */
 
 export const UNIVERSAL: ToolKey[] = ['wall'];
@@ -24,66 +27,85 @@ export const UNIVERSAL: ToolKey[] = ['wall'];
 export const LOADOUTS: Loadout[] = [
   {
     key: 'steel',
+    role: 'primary',
     name: 'Сталь',
-    blurb: 'Пряма шкода без фокусів. Найширший вибір дальностей — прощає погане місце.',
-    tools: [...UNIVERSAL, 'shard', 'arrow', 'mortar', 'rail'],
-    startable: true,
-  },
-  {
-    key: 'ice',
-    name: 'Крига',
-    blurb: 'Б’є слабко, зате все сповільнює. Виграє часом: крип довше стоїть під вогнем.',
-    tools: [...UNIVERSAL, 'rime', 'frost', 'glacier', 'hail'],
-    startable: true,
+    blurb: 'Пряма шкода без фокусів. Найширший спектр дальностей — прощає погане місце.',
+    tools: [...UNIVERSAL, 'shard', 'arrow', 'mortar', 'lance', 'cannon', 'rail'],
   },
   {
     key: 'fire',
+    role: 'primary',
     name: 'Вогонь',
     blurb: 'Найбільша шкода в грі й найкоротша рука. Живе на вузьких місцях, гине на відкритих.',
-    tools: [...UNIVERSAL, 'ember', 'flamer', 'blaze', 'pyre'],
-    startable: true,
+    tools: [...UNIVERSAL, 'ember', 'flamer', 'blaze', 'forge', 'pyre', 'inferno'],
+  },
+  {
+    key: 'ice',
+    role: 'support',
+    name: 'Крига',
+    blurb: 'Короткий різкий контроль: часті слабкі постріли, а середня заморожує групу намертво на мить.',
+    tools: ['frost', 'sleet', 'glacier', 'rift'],
   },
   {
     key: 'toxic',
+    role: 'support',
     name: 'Отрута',
-    blurb: 'Слабкий удар, сильне тління. Броня отруту не бачить — але швидкі встигають утекти.',
-    tools: [...UNIVERSAL, 'spore', 'venom', 'mire', 'blight'],
-    startable: true,
+    blurb: 'Довгий м’який контроль: в’язко, масово, надовго. Єдина відповідь на броню, що не потребує важкого удару.',
+    tools: ['venom', 'mire', 'blight', 'plague'],
   },
 ];
 
 export const LOADOUT_BY_KEY: Record<string, Loadout> = {};
 for (const l of LOADOUTS) LOADOUT_BY_KEY[l.key] = l;
 
-/** Набір за замовчуванням, якщо гравець ще нічого не обрав. */
-export const DEFAULT_LOADOUT = 'steel';
+export const PRIMARIES = LOADOUTS.filter(l => l.role === 'primary');
+export const SUPPORTS  = LOADOUTS.filter(l => l.role === 'support');
 
-/** Увесь реєстр — режим «без обмежень», ним ганяється базова лінія стенда. */
+export const DEFAULT_PRIMARY = 'steel';
+export const DEFAULT_SUPPORT = 'ice';
+
+/** Усі можливі пари — одиниця балансу. */
+export const COMBOS: { primary: Loadout; support: Loadout; name: string }[] =
+  PRIMARIES.flatMap(p => SUPPORTS.map(s => ({ primary: p, support: s, name: `${p.name} + ${s.name}` })));
+
+/** Реєстр цілком — режим «без обмежень», ним ганяється базова лінія стенда. */
 export const FULL_ARSENAL: ToolKey[] = Object.keys(TOOL_BY_KEY);
 
-/** Набори гравця (стартовий + усе набуте) згортаються в один дозвіл. */
-export function mergeLoadouts(keys: string[]): ToolKey[] {
-  const seen = new Set<ToolKey>();
-  for (const k of keys) {
-    const lo = LOADOUT_BY_KEY[k];
-    if (!lo) continue;
-    for (const t of lo.tools) seen.add(t);
-  }
-  // порядок беремо з реєстру, щоб арсенал виглядав однаково незалежно
-  // від того, в якій послідовності набори відкривались
+/** Пара ключів → список дозволених башт. Порядок беремо з реєстру, щоб
+ *  арсенал виглядав однаково незалежно від того, як вибирали. */
+export function toolsOf(primary: string, support: string): ToolKey[] {
+  const p = LOADOUT_BY_KEY[primary]?.role === 'primary' ? LOADOUT_BY_KEY[primary] : LOADOUT_BY_KEY[DEFAULT_PRIMARY];
+  const s = LOADOUT_BY_KEY[support]?.role === 'support' ? LOADOUT_BY_KEY[support] : LOADOUT_BY_KEY[DEFAULT_SUPPORT];
+  const seen = new Set([...p.tools, ...s.tools]);
   return FULL_ARSENAL.filter(k => seen.has(k));
-}
-
-/** Ключ набору → список башт. Невідомий ключ падає на типовий. */
-export function toolsOf(key: string): ToolKey[] {
-  return (LOADOUT_BY_KEY[key] || LOADOUT_BY_KEY[DEFAULT_LOADOUT]).tools;
 }
 
 /* Перевірки при старті — щоб зламаний контент падав тут, а не посеред партії. */
 for (const lo of LOADOUTS) {
   for (const k of lo.tools)
-    if (!TOOL_BY_KEY[k]) throw new Error(`набір «${lo.key}» вимагає невідому башту «${k}»`);
-  if (!lo.tools.includes('wall')) throw new Error(`набір «${lo.key}» без бар'єра`);
-  const cheap = lo.tools.filter(k => TOOL_BY_KEY[k].shot && TOOL_BY_KEY[k].cost <= 65);
-  if (!cheap.length) throw new Error(`набір «${lo.key}» без дешевої ранньої башти`);
+    if (!TOOL_BY_KEY[k]) throw new Error(`фракція «${lo.key}» вимагає невідому башту «${k}»`);
+}
+export const PRIMARY_SHAPE = [3, 2, 1];   // базові / середні / топові
+export const SUPPORT_SHAPE = [2, 1, 1];
+
+const shapeOf = (lo: Loadout) => {
+  const own = lo.tools.map(k => TOOL_BY_KEY[k]).filter(t => t.shot);
+  return [1, 2, 3].map(t => own.filter(x => x.tier === t).length);
+};
+for (const p of PRIMARIES) {
+  if (!p.tools.includes('wall')) throw new Error(`основна «${p.key}» без бар'єра`);
+  if (String(shapeOf(p)) !== String(PRIMARY_SHAPE))
+    throw new Error(`основна «${p.key}»: рівні ${shapeOf(p)}, а має бути ${PRIMARY_SHAPE}`);
+}
+for (const s of SUPPORTS) {
+  if (String(shapeOf(s)) !== String(SUPPORT_SHAPE))
+    throw new Error(`допоміжна «${s.key}»: рівні ${shapeOf(s)}, а має бути ${SUPPORT_SHAPE}`);
+}
+for (const c of COMBOS) {
+  const own = toolsOf(c.primary.key, c.support.key).map(k => TOOL_BY_KEY[k]).filter(t => t.shot);
+  if (!own.some(t => t.tier === 1 && t.cost <= 65))
+    throw new Error(`${c.name}: немає дешевої стартової башти`);
+  // найдорожча базова має бути ціллю, а не покупкою з першого кліку
+  const topBase = Math.max(...own.filter(t => t.tier === 1).map(t => t.cost));
+  if (topBase <= 120) throw new Error(`${c.name}: базові надто дешеві, немає до чого тягнутись`);
 }

@@ -20,29 +20,33 @@
 
   --t-wall:   #55707E;
 
-  /* Сталь — тепла охра й мідь */
+  /* Сталь — тепла охра й мідь, темнішає з рівнем */
   --t-shard:  #B08A5A;
   --t-arrow:  #E9A93C;
   --t-mortar: #C9732F;
-  --t-rail:   #D8C08A;
+  --t-lance:  #E0C070;
+  --t-cannon: #A8703A;
+  --t-rail:   #F0DCA0;
 
-  /* Крига — від блідої паморозі до глибокої синяви */
-  --t-rime:    #9FD0E4;
-  --t-frost:   #57A0BE;
+  /* Крига — від паморозі до глибокої синяви */
+  --t-frost:   #9FD0E4;
+  --t-sleet:   #57A0BE;
   --t-glacier: #4E7FB8;
-  --t-hail:    #3E5F96;
+  --t-rift:    #6E5FC0;
 
   /* Вогонь — від іскри до жару */
-  --t-ember:  #F0B24A;
-  --t-flamer: #E8792C;
-  --t-blaze:  #D9502A;
-  --t-pyre:   #A8321F;
+  --t-ember:   #F0B24A;
+  --t-flamer:  #E8792C;
+  --t-blaze:   #D9502A;
+  --t-forge:   #C05A1E;
+  --t-pyre:    #A8321F;
+  --t-inferno: #E03018;
 
-  /* Отрута — від спори до пошесті */
-  --t-spore:  #A8C46A;
-  --t-venom:  #7FA53F;
-  --t-mire:   #5E7F3A;
-  --t-blight: #6E8F4E;
+  /* Отрута — від токсину до мору */
+  --t-venom:  #A8C46A;
+  --t-mire:   #7FA53F;
+  --t-blight: #5E7F3A;
+  --t-plague: #4E8F6A;
 
   /* кольори фракцій для карток вибору */
   --f-steel:  #E9A93C;
@@ -121,8 +125,13 @@ button:disabled:hover{background:var(--panel); border-color:var(--line)}
   padding:9px 12px; display:flex; flex-direction:column; gap:7px}
 
 /* ─── картки фракцій ─── */
-.factions{display:grid; grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); gap:8px;
-  width:100%; max-width:760px; margin:4px 0 2px}
+.factions{display:flex; flex-direction:column; gap:10px;
+  width:100%; max-width:820px; margin:4px 0 2px}
+.fgroup{display:flex; flex-direction:column; gap:5px}
+.fgroup h3{margin:0; font-family:var(--display); font-size:9.5px; letter-spacing:.18em;
+  text-transform:uppercase; color:var(--text-faint); font-weight:600}
+.frow{display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:8px}
+.fcard .pip u{text-decoration:none; margin-left:5px; color:var(--brass); font-family:var(--mono)}
 .fcard{
   display:flex; flex-direction:column; gap:5px; align-items:flex-start; text-align:left;
   background:var(--panel); border:1px solid var(--line); border-top:2px solid var(--fc,var(--line));
