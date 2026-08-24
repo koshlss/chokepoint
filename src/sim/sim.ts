@@ -376,7 +376,7 @@ class Sim {
       x: this.sx * SUB + (SUB >> 1), y: this.sy * SUB + (SUB >> 1),
       px: this.sx * SUB + (SUB >> 1), py: this.sy * SUB + (SUB >> 1),
       hp, maxHp: hp, sp: s.sp, kind: s.kind, gold,
-      slowT: 0, slowP: 0, dotT: 0, dotD: 0, dotCd: 0, hurt: 0,
+      slowT: 0, slowP: 0, dotT: 0, dotD: 0, dotCd: 0, dotMax: 0, hurt: 0,
     };
     this.creeps.push(c);
     const n = this.mode === MODE_FIXED
@@ -430,6 +430,8 @@ class Sim {
       if (c.dotT > 0) {
         c.dotT--;
         if (--c.dotCd <= 0) { c.dotCd = 15; c.hp -= c.dotD; }
+        // отрута вигоріла — накопичене й стеля скидаються разом із нею
+        if (c.dotT === 0) { c.dotD = 0; c.dotMax = 0; }
       }
       if (c.hp <= 0) { this.kill(c, -1); continue; }
 
@@ -467,7 +469,10 @@ class Sim {
       }
 
       if (arrived) {
-        const dmg = c.kind === 3 ? 5 : 1;
+        /* Титан коштує дорожче за звичайного крипа, але вже не чверть
+           оборони: 5 із 20 життів робили боса не перевіркою, а косою —
+           один пропущений і забіг фактично скінчено. */
+        const dmg = c.kind === 3 ? 3 : 1;
         this.lives -= dmg;
         this.events.push({ e:'leak', dmg, x:c.x, y:c.y });
         continue;
@@ -540,8 +545,21 @@ class Sim {
 
   hurt(c, dmg, owner) {
     const a = ARMOR[c.kind];
+    /* Броня зрізає не більше 60% удару.
+
+       Плоске віднімання без цієї межі карає ЧАСТОТУ, а не силу: башта, що
+       б'є вдвічі частіше вдвічі слабшими ударами, має ту саму шкоду за
+       секунду, але проти броні втрачає вдвічі більше. Титан із бронею 10
+       зводив Вогнемет (9 за удар) до мінімального 1 — тобто до нуля, — і
+       ціла фракція виявлялась безсилою проти боса, хоч на папері мала
+       найбільшу шкоду в грі.
+
+       Межа лишає бронi сенс (дрібні удари й далі втрачають більше), але
+       прибирає провал, де вона знищує 90% шкоди. Цілочисельна, тож
+       детермінізм не страждає. */
+    const floor = Math.max(1, ((dmg * 40) / 100) | 0);
     let d = dmg - a;
-    if (d < 1) d = 1;
+    if (d < floor) d = floor;
     c.hp -= d;
     c.hurt = 3;
     const pl = this.players[owner >= 0 ? owner : 0];
@@ -568,9 +586,22 @@ class Sim {
       if (s.slow >= c.slowP || c.slowT <= 0) c.slowP = s.slow;
       if (s.slowT > c.slowT) c.slowT = s.slowT;
     }
+    /* Отрута НАКОПИЧУЄТЬСЯ, але не безмежно: до подвійної сили
+       найпотужнішого джерела на цій цілі.
+
+       Доти вона просто перезаписувалась, тож десять токсинових веж по
+       ОДНІЙ цілі давали шкоду однієї. Проти натовпу це не помітно, а
+       проти боса нищівно — фракція, побудована на отруті, виявлялась
+       найгіршою саме там, де мала б бути найкращою: броню отрута ігнорує.
+
+       Межа у 2× тримає її від нескінченного росту й лишає сенс у
+       потужніших джерелах: стеля рахується від найсильнішого, тож
+       дешевими спорами високої стелі не набити. */
     if (s.dot > 0) {
-      if (s.dot >= c.dotD || c.dotT <= 0) c.dotD = s.dot;
       if (s.dotT > c.dotT) c.dotT = s.dotT;
+      if (s.dot > c.dotMax) c.dotMax = s.dot;
+      const cap = c.dotMax * 2;
+      c.dotD = c.dotD + s.dot > cap ? cap : c.dotD + s.dot;
       if (c.dotCd <= 0) c.dotCd = 15;
     }
   }

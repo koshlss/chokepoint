@@ -42,24 +42,24 @@ const TOOLS: Tool[] = ([
     splash:tiles(1.35), blurb:'Важка площа з пристойною дальністю.' },
 
   /* ── ВОГОНЬ ── найбільша шкода, найкоротша рука: живе на вузьких місцях */
-  { key:'ember',   faction:'fire',  tier:1, name:'Іскра',      cost:55,  dmg:13,  cd:15, range:tiles(2.5), shot:105, swatch:'--t-ember',
+  { key:'ember',   faction:'fire',  tier:1, name:'Іскра',      cost:55,  dmg:12,  cd:15, range:tiles(2.5), shot:105, swatch:'--t-ember',
     blurb:'Часто й дешево, але дістає недалеко.' },
   { key:'flamer',  faction:'fire',  tier:1, name:'Вогнемет',   cost:105, dmg:9,   cd:9,  range:tiles(2.1), shot:70,  swatch:'--t-flamer',
-    dot:5, dotT:45, blurb:'Ллє безперервно й підпалює. Дістає майже впритул.' },
-  { key:'blaze',   faction:'fire',  tier:2, name:'Жаровня',    cost:140, dmg:32,  cd:40, range:tiles(2.9), shot:75,  swatch:'--t-blaze',
-    splash:tiles(1.2), dot:6, dotT:60, blurb:'Вибух і підпал по всьому, що зачепило.' },
-  { key:'pyre',    faction:'fire',  tier:3, name:'Вогнище',    cost:210, dmg:78,  cd:60, range:tiles(3.6), shot:120, swatch:'--t-pyre',
+    dot:4, dotT:45, blurb:'Ллє безперервно й підпалює. Дістає майже впритул.' },
+  { key:'blaze',   faction:'fire',  tier:2, name:'Жаровня',    cost:140, dmg:30,  cd:40, range:tiles(2.9), shot:75,  swatch:'--t-blaze',
+    splash:tiles(1.2), dot:4, dotT:60, blurb:'Вибух і підпал по всьому, що зачепило.' },
+  { key:'pyre',    faction:'fire',  tier:3, name:'Вогнище',    cost:210, dmg:72,  cd:60, range:tiles(3.6), shot:120, swatch:'--t-pyre',
     splash:tiles(1.45), blurb:'Найважчий вибух у грі. Ставити тільки в тісняву.' },
 
   /* ── ОТРУТА ── слабкий удар, сильне тління; броня отруту не бачить ── */
   { key:'spore',   faction:'toxic', tier:1, name:'Спора',      cost:50,  dmg:8,   cd:17, range:tiles(2.9), shot:95,  swatch:'--t-spore',
-    dot:5, dotT:50, blurb:'Майже не б’є — труїть.' },
+    dot:4, dotT:50, blurb:'Майже не б’є — труїть.' },
   { key:'venom',   faction:'toxic', tier:1, name:'Токсин',     cost:110, dmg:12,  cd:26, range:tiles(3.1), shot:95,  swatch:'--t-venom',
-    dot:10, dotT:75, blurb:'Отрута йде крізь броню.' },
+    dot:7, dotT:75, blurb:'Отрута йде крізь броню.' },
   { key:'mire',    faction:'toxic', tier:2, name:'Багно',      cost:125, dmg:12,  cd:22, range:tiles(3.0), shot:85,  swatch:'--t-mire',
-    slow:18, slowT:40, dot:7, dotT:60, blurb:'В’язко й отруйно: сповільнює й труїть заразом.' },
+    slow:18, slowT:40, dot:5, dotT:60, blurb:'В’язко й отруйно: сповільнює й труїть заразом.' },
   { key:'blight',  faction:'toxic', tier:3, name:'Пошесть',    cost:200, dmg:35,  cd:44, range:tiles(3.5), shot:110, swatch:'--t-blight',
-    splash:tiles(1.2), dot:13, dotT:85, blurb:'Хмара, що труїть усю групу одразу.' },
+    splash:tiles(1.2), dot:10, dotT:85, blurb:'Хмара, що труїть усю групу одразу.' },
 
 ] as Omit<Tool, 'slot'>[]).map((t, i) => ({ ...t, slot: i }));
 

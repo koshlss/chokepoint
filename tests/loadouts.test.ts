@@ -170,20 +170,50 @@ describe('рівні башт', () => {
 });
 
 describe('ефекти пострілу', () => {
-  /* Раніше кожне влучання перезаписувало ефект, тож дешева башта, вистріливши
-     після важкої, знижувала отруту — фракція воювала сама із собою. */
-  it('сильніша отрута не збивається слабшою', () => {
+  const freshCreep = () => ({ dotD: 0, dotT: 0, dotCd: 0, dotMax: 0, slowP: 0, slowT: 0 });
+
+  /* Доти отрута просто перезаписувалась, тож десять токсинових веж по одній
+     цілі давали шкоду однієї — фракція, побудована на отруті, була найгіршою
+     саме проти босів, хоч броню ігнорує. */
+  it('отрута від різних веж накопичується', () => {
     const sim: any = new Sim('E-1', 100, 1, 0, MODE_FIXED);
-    const c: any = { dotD: 0, dotT: 0, dotCd: 0, slowP: 0, slowT: 0 };
+    const c: any = freshCreep();
+    sim.affect(c, { dot: 10, dotT: 60 });
+    sim.affect(c, { dot: 6,  dotT: 60 });
+    expect(c.dotD).toBe(16);
+  });
+
+  it('накопичення обмежене подвоєним найсильнішим джерелом', () => {
+    const sim: any = new Sim('E-2', 100, 1, 0, MODE_FIXED);
+    const c: any = freshCreep();
+    for (let i = 0; i < 10; i++) sim.affect(c, { dot: 10, dotT: 60 });
+    expect(c.dotD).toBe(20);
+  });
+
+  it('стеля рахується від найсильнішого — дешевими спорами її не набити', () => {
+    const sim: any = new Sim('E-3', 100, 1, 0, MODE_FIXED);
+    const weak: any = freshCreep();
+    for (let i = 0; i < 20; i++) sim.affect(weak, { dot: 3, dotT: 60 });
+    const strong: any = freshCreep();
+    sim.affect(strong, { dot: 12, dotT: 60 });
+    for (let i = 0; i < 20; i++) sim.affect(strong, { dot: 3, dotT: 60 });
+    expect(weak.dotD).toBe(6);
+    expect(strong.dotD).toBe(24);
+  });
+
+  it('слабке влучання не знижує вже накопичену отруту', () => {
+    const sim: any = new Sim('E-4', 100, 1, 0, MODE_FIXED);
+    const c: any = freshCreep();
     sim.affect(c, { dot: 24, dotT: 100 });
-    sim.affect(c, { dot: 8,  dotT: 60  });
-    expect(c.dotD).toBe(24);
+    const before = c.dotD;
+    sim.affect(c, { dot: 3, dotT: 20 });
+    expect(c.dotD).toBeGreaterThanOrEqual(before);
     expect(c.dotT).toBe(100);
   });
 
   it('свіже влучання продовжує дію', () => {
-    const sim: any = new Sim('E-2', 100, 1, 0, MODE_FIXED);
-    const c: any = { dotD: 0, dotT: 0, dotCd: 0, slowP: 0, slowT: 0 };
+    const sim: any = new Sim('E-5', 100, 1, 0, MODE_FIXED);
+    const c: any = freshCreep();
     sim.affect(c, { dot: 10, dotT: 60 });
     c.dotT = 5;                                   // майже вигоріла
     sim.affect(c, { dot: 10, dotT: 60 });
@@ -192,7 +222,7 @@ describe('ефекти пострілу', () => {
 
   it('сильніше сповільнення не збивається слабшим', () => {
     const sim: any = new Sim('E-3', 100, 1, 0, MODE_FIXED);
-    const c: any = { dotD: 0, dotT: 0, dotCd: 0, slowP: 0, slowT: 0 };
+    const c: any = freshCreep();
     sim.affect(c, { slow: 45, slowT: 45 });
     sim.affect(c, { slow: 22, slowT: 36 });
     expect(c.slowP).toBe(45);
@@ -201,10 +231,46 @@ describe('ефекти пострілу', () => {
   it('башта з площею таки накладає свій ефект — раніше мовчки ні', () => {
     const sim: any = new Sim('E-4', 100, 1, 0, MODE_FIXED);
     sim.creeps = [
-      { id: 1, x: 100, y: 100, hp: 9999, dotD: 0, dotT: 0, dotCd: 0, slowP: 0, slowT: 0, hurt: 0 },
-      { id: 2, x: 110, y: 100, hp: 9999, dotD: 0, dotT: 0, dotCd: 0, slowP: 0, slowT: 0, hurt: 0 },
+      { id: 1, x: 100, y: 100, hp: 9999, dotD: 0, dotT: 0, dotCd: 0, dotMax: 0, slowP: 0, slowT: 0, hurt: 0, kind: 0 },
+      { id: 2, x: 110, y: 100, hp: 9999, dotD: 0, dotT: 0, dotCd: 0, dotMax: 0, slowP: 0, slowT: 0, hurt: 0, kind: 0 },
     ];
     sim.impact({ x: 105, y: 100, k: 'glacier', splash: 200, dmg: 1, owner: 0, slow: 25, slowT: 40 }, sim.creeps[0]);
     for (const c of sim.creeps) expect(c.slowP, 'крип ' + c.id).toBe(25);
+  });
+});
+
+describe('броня', () => {
+  const hit = (dmg: number, kind: number) => {
+    const sim: any = new Sim('A-1', 100, 1, 0, MODE_FIXED);
+    const c: any = { kind, hp: 100000, hurt: 0 };
+    sim.hurt(c, dmg, 0);
+    return 100000 - c.hp;
+  };
+
+  it('без броні удар проходить повністю', () => {
+    expect(hit(13, 0)).toBe(13);
+  });
+
+  it('броня віднімається від удару', () => {
+    expect(hit(34, 2), 'броньовані, броня 3').toBe(31);
+    expect(hit(34, 3), 'титан, броня 10').toBe(24);
+  });
+
+  /* Без цієї межі плоске віднімання карало ЧАСТОТУ, а не силу: башта, що
+     б'є вдвічі частіше вдвічі слабшими ударами, має ту саму шкоду за
+     секунду, але проти броні втрачала вдвічі більше. Вогнемет (9 за удар)
+     проти титана зводився до 1 — тобто до нуля. */
+  it('броня не зрізає більш як 60% удару', () => {
+    expect(hit(9, 3),  'дрібний удар по титану').toBe(3);   // 9-10 було б 1
+    expect(hit(13, 3), 'Іскра по титану').toBe(5);          // 13-10 було б 3
+    expect(hit(10, 3), 'Картеч по титану').toBe(4);         // 10-10 було б 1
+  });
+
+  it('на важких ударах межа не спрацьовує — там віднімання й так м\'яке', () => {
+    expect(hit(110, 3)).toBe(100);      // Рейкотрон: 110-10, а не 66
+  });
+
+  it('удар ніколи не падає нижче одиниці', () => {
+    expect(hit(1, 3)).toBe(1);
   });
 });
