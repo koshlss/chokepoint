@@ -10,6 +10,18 @@ let bad = 0;
 const say = s => { log.push(s); out(); };
 const check = (n, ok, extra) => { say((ok ? '  ok   ' : '  ЗБІЙ ') + n + (extra ? '  — ' + extra : '')); if (!ok) bad++; };
 
+/* Стан оновлює hud() з кадру анімації. Під віртуальним часом кадри й
+   таймери йдуть не в ногу, тож фіксована пауза давала то проходження,
+   то збій на рівному місці. Чекаємо на саму умову, а не на годинник. */
+const until = async (fn, ms = 3000) => {
+  const t0 = Date.now();
+  while (Date.now() - t0 < ms) {
+    try { if (fn()) return true; } catch (e) {}
+    await new Promise(r => setTimeout(r, 25));
+  }
+  return false;
+};
+
 window.addEventListener('load', async () => {
   const f = document.getElementById('f');
   const w = f.contentWindow, d = f.contentDocument;
@@ -22,6 +34,11 @@ window.addEventListener('load', async () => {
   await new Promise(r => setTimeout(r, 400));
   say('версія: ' + (w.CHOKEPOINT && w.CHOKEPOINT.BUILD));
   check('гра стартувала', w.CHOKEPOINT && w.CHOKEPOINT.sim && w.CHOKEPOINT.sim.tick >= 0);
+  /* Живість циклу міряємо саме тут, поки сторінка щойно завантажилась і
+     кадри анімації точно були. Далі покладатись на них не можна: під
+     віртуальним часом таймери й кадри йдуть не в ногу, і будь-яке
+     очікування «доки тік зросте» вимірює стенд, а не гру. */
+  check('цикл анімації живий', w.CHOKEPOINT.sim.tick > 0, 'тік ' + w.CHOKEPOINT.sim.tick);
 
   /* 0. Цілість інтерфейсу мережі. Геттер live одного разу зник під час
         редагування — гра мовчки грала соло, і жодна перевірка цього не
@@ -62,12 +79,27 @@ window.addEventListener('load', async () => {
   const duelCb = d.getElementById('duelToggle');
   check('тумблер дуелі неактивний у соло (немає з ким)', duelCb.disabled === true || d.getElementById('duelField').className.indexOf('na') >= 0);
 
-  /* 0д. Панель гравців: нік, палітра кольорів, жива статистика. */
-  for (const id of ['myName','mySwatches','rosterBody'])
+  /* 0д. Панель гравців: у соло її бути НЕ має — рядок на одного лише
+         дублював би шапку. Натомість у шапці стоїть особиста стата. */
+  for (const id of ['myName','mySwatches','rosterBody','playersTop','rKills','rTowers','rDmg'])
     check('є елемент #' + id, !!d.getElementById(id));
+  check('у соло панель гравців схована', await until(() => d.getElementById('playersTop').hidden === true));
+  check('у соло панель гравців справді не видно',
+        w.getComputedStyle(d.getElementById('playersTop')).display === 'none');
+  check('у соло особиста стата стоїть у шапці',
+        d.getElementById('rKills').offsetParent !== null);
+
+  /* Панель має з'явитись, щойно партія стає не сольною. */
+  n.setState('live');
+  check('у коопі панель гравців з\'являється',
+        await until(() => d.getElementById('playersTop').hidden === false));
+  check('у таблиці гравців є рядки',
+        await until(() => d.getElementById('rosterBody').children.length >= 1));
+  check('у коопі особиста стата ховається з шапки',
+        await until(() => d.getElementById('rKills').offsetParent === null));
+
   const swatchBtns = d.querySelectorAll('#mySwatches button');
   check('палітра кольорів побудована', swatchBtns.length >= 3, swatchBtns.length + ' кольорів');
-  check('у таблиці гравців є рядок у соло', d.getElementById('rosterBody').children.length >= 1);
   errs.length = 0;
   d.getElementById('myName').value = 'Тест<script>';
   d.getElementById('myName').dispatchEvent(new w.Event('input'));
@@ -76,20 +108,59 @@ window.addEventListener('load', async () => {
   check('нік і колір змінюються без помилок', errs.length === 0, errs.join(' | '));
   check('нік екранується в таблиці (без інʼєкції)', d.getElementById('rosterBody').innerHTML.indexOf('<script>') < 0);
   check('обраний колір позначений aria-pressed', swatchBtns[1] && swatchBtns[1].getAttribute('aria-pressed') === 'true');
+  n.setState('off');
+  await new Promise(r => setTimeout(r, 150));
+
+  /* 0е. Фракції: вибір, власний арсенал, замки за рівнями. */
+  for (const id of ['loadoutSel','veilFactions'])
+    check('є елемент #' + id, !!d.getElementById(id));
+  const cards = d.querySelectorAll('.fcard');
+  check('картки фракцій побудовані', cards.length === 4, cards.length + ' шт');
+  const railKeys = () => [...d.querySelectorAll('#rail .tool')].map(b => b.dataset.key).filter(Boolean);
+  errs.length = 0;
+  const iceCard = d.querySelector('.fcard[data-lo="ice"]');
+  if (iceCard) iceCard.click();
+  await new Promise(r => setTimeout(r, 200));
+  check('вибір фракції не кидає помилок', errs.length === 0, errs.join(' | '));
+  const ice = railKeys();
+  check('арсенал змінився на фракційний', ice.indexOf('frost') >= 0 && ice.indexOf('arrow') < 0, ice.join(','));
+  // картки перемальовуються цілком, тож старе посилання вказує на вилучений
+  // вузол — питати треба заново
+  check('картку обраної фракції позначено',
+        d.querySelector('.fcard[data-lo="ice"]').getAttribute('aria-pressed') === 'true');
+  const locked = [...d.querySelectorAll('#rail .tool.locked')].map(b => b.dataset.key);
+  check('на старті закриті середні й топові', locked.indexOf('glacier') >= 0 && locked.indexOf('hail') >= 0, locked.join(','));
+  check('рівні підписані хвилею відкриття',
+        [...d.querySelectorAll('.tierHead')].some(h => h.textContent.indexOf('з хвилі') >= 0));
+  check('на нульовій хвилі відкрито лише перший рівень', w.CHOKEPOINT.sim.tier() === 1);
+  const steelCard = d.querySelector('.fcard[data-lo="steel"]');
+  if (steelCard) steelCard.click();
+  await new Promise(r => setTimeout(r, 200));
+  check('фракція перемикається назад', railKeys().indexOf('arrow') >= 0);
+
+  /* Зміна фракції в соло — це новий забіг (арсенал фіксований на партію),
+     тож гра знову чекає за стартовим екраном. Знімаємо його, інакше далі
+     міряли б не живий цикл, а заморожену дошку. */
+  const startBtn = d.getElementById('veilBtn');
+  if (startBtn && !d.getElementById('veil').hidden) startBtn.click();
+  await new Promise(r => setTimeout(r, 300));
+  check('стартовий екран знімається кнопкою', await until(() => d.getElementById('veil').hidden === true));
+  check('зняття паузи не кидає помилок', errs.length === 0, errs.join(' | '));
 
   /* 0б. Гість щойно приєднався: номер гравця вже 1, а симуляція ще
          однокористувацька. Саме тут цикл падав на sim.players[1].gold. */
   errs.length = 0;
-  n.me = 1; n.state = 'waiting';
+  n.me = 1; n.setState('waiting');
   await new Promise(r => setTimeout(r, 300));
   const bad0 = (n.evt || []).filter(x => x.indexOf('ПОМИЛКА') >= 0);
   check('цикл живий, поки гість без напарника', errs.length === 0 && bad0.length === 0, (errs.concat(bad0)).join(' | '));
-  check('гра не застигла', w.CHOKEPOINT.sim.tick > 0, 'тік ' + w.CHOKEPOINT.sim.tick);
-  n.me = 0; n.state = 'off';
+  n.me = 0; n.setState('off');
 
   // 1. кожен інструмент арсеналу
   const tools = d.querySelectorAll('.tool');
-  check('арсенал побудовано', tools.length >= 9, tools.length + ' кнопок');
+  check('арсенал побудовано', tools.length >= 8, tools.length + ' кнопок');
+  check('заблоковані вежі не вибираються кліком',
+        [...tools].filter(t => t.classList.contains('locked')).every(t => t.getAttribute('aria-pressed') !== 'true'));
   tools.forEach(t => t.click());
 
   // 2. керування
