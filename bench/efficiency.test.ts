@@ -1,56 +1,45 @@
-/* Віддача кожної башти на золото — і те саме після прокачки.
-
-   Якщо всередині рівня віддача нерівна, вибір схлопується: беруть одну,
-   решта мертві. Якщо прокачка вигідніша за нову вежу, схлопується вже
-   стратегія: усі комбінації грають «найдешевша + вкачати». Ця таблиця
-   показує обидва схлопування числом. */
+/* Поточний стан за мірою сили (src/content/power.ts). Друкує те, що
+   перевіряє tests/power.test.ts, але з числами — щоб було видно, куди
+   саме тягнути, коли смуга не сходиться. */
 import { it } from 'vitest';
 import { writeFileSync } from 'node:fs';
-import { TOOLS, UPG, MAX_LVL } from '../src/content/towers';
+import { TOOLS, UPG } from '../src/content/towers';
 import { LOADOUTS } from '../src/content/loadouts';
-import { SUB } from '../src/sim/constants';
+import { power, efficiency, efficiencyAt, control, BAND } from '../src/content/power';
 
-/** Скільки башта варта за секунду з поправкою на площу, отруту й мороз. */
-function eff(dmg: number, t: any) {
-  const direct = t.cd ? dmg * 30 / t.cd : 0;
-  const burn = t.dot ? t.dot * 2 : 0;
-  const area = t.splash ? 1.6 : 1;
-  const hold = t.slow ? 1 + t.slow / 200 : 1;
-  return (direct * area + burn) * hold;
-}
-/** Сукупна ціна вежі, вкачаної до рівня lvl. */
-function total(t: any, lvl: number) {
-  let c = t.cost;
-  for (let l = 2; l <= lvl; l++) c += (t.cost * UPG[l].pct) / 100;
-  return c;
-}
-
-it('віддача на золото', () => {
-  const out: string[] = ['Віддача на золото: скільки «шкоди за секунду» дає одиниця ціни', '',
-    `Прокачка коштує ${UPG[2]!.pct}% і ${UPG[3]!.pct}% від базової ціни.`, ''];
-  const head = ['башта', 'фракція', 'рів', 'ціна', 'lvl1', 'lvl2', 'lvl3'];
-  const w = [11, 8, 4, 6, 7, 7, 7];
+it('міра сили', () => {
+  const out: string[] = ['Міра сили: power = скільки вежа варта за секунду', '',
+    `Прокачка коштує ${UPG[2]!.pct}% і ${UPG[3]!.pct}% від базової ціни.`,
+    `Смуга віддачі: основні ${BAND.primary.min}–${BAND.primary.max}, допоміжні ${BAND.support.min}–${BAND.support.max}`, ''];
+  const head = ['башта', 'фракція', 'рів', 'ціна', 'сила', 'контроль', 'віддача', 'lvl2', 'lvl3'];
+  const w = [11, 8, 4, 6, 7, 9, 8, 7, 7];
   const line = (c: string[]) => c.map((s, i) => s.padEnd(w[i])).join(' ');
   out.push(line(head), line(w.map(n => '─'.repeat(n))));
 
   for (const lo of LOADOUTS) {
+    const band = lo.role === 'primary' ? BAND.primary : BAND.support;
     for (const key of lo.tools) {
       const t: any = TOOLS.find(x => x.key === key);
       if (!t || !t.shot) continue;
-      const cells = [1, 2, 3].map(lvl => {
-        const d = ((t.dmg * UPG[lvl]!.dmg) / 100) | 0;
-        return (eff(d, t) / total(t, lvl)).toFixed(2);
-      });
-      out.push(line([t.name, lo.name, String(t.tier), String(t.cost), ...cells]));
+      const e = efficiency(t);
+      const flag = e < band.min ? ' ↓' : e > band.max ? ' ↑' : '';
+      out.push(line([t.name, lo.name, String(t.tier), String(t.cost),
+        power(t).toFixed(0), control(t).toFixed(0), e.toFixed(2) + flag,
+        efficiencyAt(t, 2).toFixed(2), efficiencyAt(t, 3).toFixed(2)]));
     }
+    // сила по рівнях — правило 2
+    const byTier = [1, 2, 3].map(tier => {
+      const own = lo.tools.map(k => TOOLS.find(x => x.key === k)!).filter(t => t && t.shot && t.tier === tier);
+      return own.length ? Math.max(...own.map(t => power(t))) : 0;
+    });
+    out.push(`   сила по рівнях: ${byTier.map(v => v.toFixed(0)).join(' → ')}` +
+      `   (крок ${(byTier[1] / byTier[0]).toFixed(2)}× , ${(byTier[2] / byTier[1]).toFixed(2)}×)`);
     out.push('');
   }
-
-  out.push('Прокачка проти нової вежі — у скільки разів вигідніша ДОДАТКОВА шкода:');
+  out.push('Прокачка проти нової вежі (правило 3: має бути ≤ 1.00):');
   for (const lvl of [2, 3]) {
-    const gain = UPG[lvl]!.dmg - UPG[lvl - 1]!.dmg;      // приріст шкоди, %
-    const price = UPG[lvl]!.pct;                          // ціна, % від базової
-    out.push(`  до ${lvl}-го рівня: +${gain}% шкоди за ${price}% ціни → ${(gain / price).toFixed(2)}× (нова вежа = 1.00)`);
+    const gain = UPG[lvl]!.dmg - UPG[lvl - 1]!.dmg;
+    out.push(`  до ${lvl}-го: +${gain}% шкоди за ${UPG[lvl]!.pct}% ціни → ${(gain / UPG[lvl]!.pct).toFixed(2)}×`);
   }
   const text = out.join('\n') + '\n';
   console.log('\n' + text);

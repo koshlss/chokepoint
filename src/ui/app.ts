@@ -6,6 +6,7 @@ import { TOOLS, TOOL_BY_KEY, UPG, MAX_LVL, AIMS } from '../content/towers';
 import type { Cursor, CursorMode, Tool } from '../content/types';
 import { TIER_WAVE, TIER_NAME, tierAt } from '../content/types';
 import { LOADOUTS, LOADOUT_BY_KEY, PRIMARIES, SUPPORTS, DEFAULT_PRIMARY, DEFAULT_SUPPORT, toolsOf } from '../content/loadouts';
+import { buildTicks } from '../content/power';
 import { KIND_NAME } from '../content/waves';
 import { unpackCode } from '../net/codec';
 import { RTC } from '../net/ice';
@@ -1477,6 +1478,22 @@ function drawTower(t) {
   ctx.fillRect(x + p, y + p, TS - p * 2, TS - p * 2);
   ctx.strokeStyle = col; ctx.lineWidth = 1.5;
   ctx.strokeRect(x + p + .75, y + p + .75, TS - p * 2 - 1.5, TS - p * 2 - 1.5);
+
+  /* Вежа, що будується, не стріляє — і це має бути видно, інакше гравець
+     вирішить, що вона зламана. Малюємо приглушено й показуємо, скільки
+     лишилось: смужка знизу спадає до нуля. */
+  if (t.build > 0) {
+    const full = buildTicks(TOOL_BY_KEY[t.k].cost);
+    const left = Math.max(0, Math.min(1, t.build / Math.max(1, full)));
+    ctx.save();
+    ctx.fillStyle = C('--ink'); ctx.globalAlpha = .55;
+    ctx.fillRect(x + p, y + p, TS - p * 2, TS - p * 2);
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = col;
+    ctx.fillRect(x + p, y + TS - p - 2, (TS - p * 2) * (1 - left), 2);
+    ctx.restore();
+    return;                                     // ствол і позначки — уже готовій
+  }
   if (t.freshSpent > 0) {                       // ще можна знести без втрат
     ctx.save();
     ctx.setLineDash([3, 3]); ctx.strokeStyle = C('--moss'); ctx.lineWidth = 1.5;

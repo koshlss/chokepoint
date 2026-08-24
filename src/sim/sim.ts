@@ -6,6 +6,7 @@ import { MAPS } from '../content/maps';
 import { TOOL_BY_KEY, UPG, MAX_LVL, AIMS } from '../content/towers';
 import { ARMOR, waveSpec } from '../content/waves';
 import { tierAt, TIER_WAVE } from '../content/types';
+import { buildTicks } from '../content/power';
 
 /* Скільки тіків крип не піддається морозу після того, як попередній спав.
    Разом зі slowT задає СТАЛУ частку часу під уповільненням — саме це й
@@ -296,7 +297,8 @@ class Sim {
       p.gold -= tool.cost;
       // freshSpent — вкладене після останньої межі хвилі: вертається повністю
       const nt = { x:cmd.x, y:cmd.y, k:tool.key, cd:0, owner:cmd.p, ax:1, ay:0,
-                   lvl:1, spent:tool.cost, freshSpent:tool.cost, aim:0 };
+                   lvl:1, spent:tool.cost, freshSpent:tool.cost, aim:0,
+                   build:buildTicks(tool.cost) };
       this.recalcTower(nt);
       this.towers.push(nt);
       this.events.push({ e:'build', p:cmd.p, x:cmd.x, y:cmd.y, k:tool.key, cost:tool.cost });
@@ -323,6 +325,8 @@ class Sim {
       p.gold -= cost;
       t.lvl++; t.spent += cost; t.freshSpent += cost;
       this.recalcTower(t);
+      // прокачка теж займає час, і теж пропорційно вкладеному
+      t.build = buildTicks(cost);
       this.events.push({ e:'up', p:cmd.p, x:cmd.x, y:cmd.y, lvl:t.lvl });
 
     } else if (cmd.t === 'aim') {
@@ -535,6 +539,12 @@ class Sim {
 
   fireTowers() {
     for (const t of this.towers) {
+      /* Поки вежа будується — не стріляє. Це третій ресурс поруч із
+         золотом і клітинами: пауза між хвилями перестає бути безмежним
+         вікном для покупок, і «п'ять дешевих чи одна важка» стає
+         питанням не лише грошей, а й того, скільки з них устигне
+         вистрілити цієї хвилі. */
+      if (t.build > 0) { t.build--; continue; }
       const st = t.st;
       if (st.cd === 0) continue;
       if (t.cd > 0) { t.cd--; continue; }
@@ -721,7 +731,7 @@ class Sim {
     mix(this.mapIdx); mix(this.mode); mix(this.diff); mix(this.cov);
     mix(this.tick); mix(this.lives); mix(this.wave); mix(this.rng); mix(this.waveVotes.size);
     for (const p of this.players) { mix(p.gold); mix(p.dmg); mix(p.kills); }
-    for (const t of this.towers) { mix(t.x); mix(t.y); mix(t.cd); mix(t.lvl); mix(t.aim); mix(t.k.charCodeAt(0)); }
+    for (const t of this.towers) { mix(t.x); mix(t.y); mix(t.cd); mix(t.lvl); mix(t.aim); mix(t.build); mix(t.k.charCodeAt(0)); }
     for (const c of this.creeps) { mix(c.id); mix(c.x); mix(c.y); mix(c.hp); mix(c.slowT); }
     for (const s of this.shots)  { mix(s.x); mix(s.y); mix(s.tid); }
     return (h >>> 0).toString(16).padStart(8, '0');
