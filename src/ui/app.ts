@@ -1120,6 +1120,14 @@ function frameBody(now) {
           mine.push({ t:'wave', p:0 });
           mates.push({ t:'wave', p:0 });
         }
+        /* Хвиля має починатись в обох одночасно. Дошки окремі, тож без
+           цього той, хто добив свою хвилю раніше, раніше й отримував
+           наступну — і з кожною хвилею відривався все далі, аж поки
+           порівнювати ставало нема з чим. Тепер відлік підготовки
+           стоїть, поки друга дошка ще в бою. Обидва клієнти рахують
+           обидві дошки, тож умова однакова з обох боків. */
+        sim.holdPrep     = !simMate.over && simMate.phase === 1;
+        simMate.holdPrep = !sim.over && sim.phase === 1;
         sim.step(mine);
         simMate.step(mates);
         digestMate();
@@ -1394,7 +1402,7 @@ function hud() {
      ходом партії ставало незручно. Кнопка тепер називає дію, а час до
      хвилі живе там, де й решта показників. */
   setText(el.next, KIND_NAME[nx.kind] + ' ×' + nx.n + (nx.boss ? ' + супровід' : '') +
-    (sim.phase === 0 ? ' · ' + Math.ceil(sim.prep / TPS) + ' с' : ''));
+    (sim.phase !== 0 ? '' : sim.holdPrep ? ' · чекаємо напарника' : ' · ' + Math.ceil(sim.prep / TPS) + ' с'));
   el.next.className    = 'v' + (nx.kind === 3 ? ' warn' : nx.kind === 2 ? ' calm' : '');
   // У дуелі голоси рахує duelWaveVotes (два реальні гравці), а не
   // sim.waveVotes — та дошка сама по собі сольна (nPlayers=1) і бачить

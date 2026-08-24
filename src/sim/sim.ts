@@ -50,6 +50,7 @@ class Sim {
   towers: any;
   wave: any;
   waveVotes: any;
+  holdPrep: boolean;
   won: any;
 
   /* arsenals — по набору дозволених башт на гравця. Не входить у hash():
@@ -93,6 +94,7 @@ class Sim {
     this.phase       = 0;    // 0 = підготовка, 1 = хвиля йде
     this.prep        = TPS * BALANCE.prepFirst;
     this.waveVotes   = new Set();  // хто вже готовий прискорити поточну підготовку
+    this.holdPrep    = false;      // дуель: не відлічувати підготовку, поки напарник у бою
     this.queue       = [];
     this.toSpawn     = 0;
     this.spawnGap    = 0;
@@ -396,7 +398,7 @@ class Sim {
       x: this.sx * SUB + (SUB >> 1), y: this.sy * SUB + (SUB >> 1),
       px: this.sx * SUB + (SUB >> 1), py: this.sy * SUB + (SUB >> 1),
       hp, maxHp: hp, sp: s.sp, kind: s.kind, gold,
-      slowT: 0, slowP: 0, slowImm: 0, vulnT: 0, vulnP: 0, dotT: 0, dotD: 0, dotCd: 0, dotMax: 0, hurt: 0,
+      slowT: 0, slowP: 0, slowImm: 0, vulnT: 0, vulnP: 0, dotT: 0, dotD: 0, dotCd: 0, dotMax: 0, dotBy: -1, hurt: 0,
     };
     this.creeps.push(c);
     const n = this.mode === MODE_FIXED
@@ -417,7 +419,12 @@ class Sim {
 
     // фаза хвилі
     if (this.phase === 0) {
-      if (--this.prep <= 0) this.startWave();
+      /* holdPrep ставить дуель: поки напарник ще добиває свою хвилю, мій
+         відлік стоїть. Інакше той, хто впорався швидше, отримував і
+         наступну хвилю раніше, з кожною хвилею відриваючись усе далі —
+         і порівнювати два боки ставало нема з чим. Хто швидший, той
+         однаково виграє: у нього більше часу на будівництво. */
+      if (!this.holdPrep && --this.prep <= 0) this.startWave();
     } else {
       if (this.toSpawn > 0) {
         if (--this.spawnCd <= 0) { this.spawnOne(); this.toSpawn--; this.spawnCd = this.spawnGap; }
@@ -449,15 +456,21 @@ class Sim {
       // отрута
       if (c.dotT > 0) {
         c.dotT--;
-        if (--c.dotCd <= 0) { c.dotCd = 15; c.hp -= c.dotD; }
+        if (--c.dotCd <= 0) {
+          c.dotCd = 15;
+          c.hp -= c.dotD;
+          const pl = this.players[c.dotBy >= 0 ? c.dotBy : 0];
+          if (pl) pl.dmg += c.dotD;   // отрута теж чиясь шкода, а не нічия
+        }
         // отрута вигоріла — накопичене й стеля скидаються разом із нею
-        if (c.dotT === 0) { c.dotD = 0; c.dotMax = 0; }
+        if (c.dotT === 0) { c.dotD = 0; c.dotMax = 0; c.dotBy = -1; }
       }
       if (c.vulnT > 0) {
         c.vulnT--;
         if (c.vulnT === 0) c.vulnP = 0;
       }
-      if (c.hp <= 0) { this.kill(c, -1); continue; }
+      // смерть від отрути — вбивство того, хто отруїв, а не гравця 0
+      if (c.hp <= 0) { this.kill(c, c.dotBy); continue; }
 
       // сповільнення
       let sp = c.sp;
@@ -665,6 +678,10 @@ class Sim {
       c.dotD = c.dotD + s.dot > cap ? cap : c.dotD + s.dot;
       if (c.dotCd <= 0) c.dotCd = 15;
       if (s.dotT > landed) landed = s.dotT;
+      /* Хто отруїв — щоб і шкода, і вбивство дісталися йому. Доти отрута
+         була нічия: шкода не рахувалась нікому, а вбивство падало
+         гравцю 0 незалежно від того, чи має він хоч одну вежу. */
+      c.dotBy = s.owner;
     }
 
     /* Позначка ЇДЕ НА САМОМУ ЕФЕКТІ, тому ставиться останньою — їй треба
