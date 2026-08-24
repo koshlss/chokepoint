@@ -247,20 +247,10 @@ window.addEventListener('load', async () => {
   await new Promise(r => setTimeout(r, 200));
   check('після керування помилок немає', errs.length === 0, errs.join(' | '));
 
-  // 3. головне — створення гри
-  d.getElementById('btnHost').click();
-  await new Promise(r => setTimeout(r, 2500));
-  const code = d.getElementById('codeBox').value;
-  check('«Створити гру» без помилок', errs.length === 0, errs.join(' | '));
-  say('  довідково: код запрошення ' + code.length + ' символів (під віртуальним часом ICE не встигає)');
-
-  // 4. вставлення сміття не має валити сторінку
-  d.getElementById('codeBox').value = 'не-код';
-  d.getElementById('btnUse').click();
-  await new Promise(r => setTimeout(r, 300));
-  check('сміття в полі коду оброблено чемно', errs.length === 0, errs.join(' | '));
-
-  // 5. соло: зміна мапи в шапці одразу перезапускає партію новою мапою
+  // 3. соло: зміна мапи в шапці одразу перезапускає партію новою мапою
+  // Крок мусить іти ДО «Створити гру»: щойно піднято лобі, партія вже не
+  // соло, і мапу міняє господар у лобі, а не селект у шапці. Раніше цей
+  // крок стояв нижче й ловив не ваду гри, а власний порядок.
   errs.length = 0;
   const before = w.CHOKEPOINT.sim.mapIdx;
   const sel = d.getElementById('mapSel');
@@ -269,6 +259,19 @@ window.addEventListener('load', async () => {
   await new Promise(r => setTimeout(r, 200));
   check('зміна мапи в соло стартує нову партію', errs.length === 0 && w.CHOKEPOINT.sim.mapIdx !== before,
         'було ' + before + ', стало ' + w.CHOKEPOINT.sim.mapIdx);
+
+  // 4. головне — створення гри
+  d.getElementById('btnHost').click();
+  await new Promise(r => setTimeout(r, 2500));
+  const code = d.getElementById('codeBox').value;
+  check('«Створити гру» без помилок', errs.length === 0, errs.join(' | '));
+  say('  довідково: код запрошення ' + code.length + ' символів (під віртуальним часом ICE не встигає)');
+
+  // 5. вставлення сміття не має валити сторінку
+  d.getElementById('codeBox').value = 'не-код';
+  d.getElementById('btnUse').click();
+  await new Promise(r => setTimeout(r, 300));
+  check('сміття в полі коду оброблено чемно', errs.length === 0, errs.join(' | '));
 
   // 6. кнопки журналу партій безпечні без налаштованого вебхука/історії
   errs.length = 0;

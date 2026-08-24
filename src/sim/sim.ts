@@ -699,7 +699,7 @@ class Sim {
          й отрута жили лише в одиночній гілці, тож будь-яка башта з площею
          І ефектом мовчки не давала ефекту зовсім. */
       for (const c of hitList) { this.affect(c, s); this.hurt(c, s.dmg, s.owner); }
-      this.events.push({ e:'boom', x:s.x, y:s.y, r:s.splash });
+      this.events.push({ e:'boom', x:s.x, y:s.y, r:s.splash, k:s.k });
     } else {
       this.affect(tgt, s);
       this.hurt(tgt, s.dmg, s.owner);

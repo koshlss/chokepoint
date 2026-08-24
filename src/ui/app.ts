@@ -358,7 +358,7 @@ function boot(g?: number) {
   el.mateBoard.classList.remove('over');
   refreshHostLocks();
   drawRail();
-  if (!looping) { looping = true; requestAnimationFrame(frame); }
+  if (!looping) { looping = true; schedule(frame); }
   resize();
 
   if (!net.solo || hasRoomParam()) gameStarted = true;
@@ -405,6 +405,13 @@ function drawRail() {
       el.rail.appendChild(b);
     }
   }
+  /* Керування вежами — не частина арсеналу: воно не про «що поставити»,
+     а про «що зробити з поставленим». Тому окремим заголовком, як рівні. */
+  const sep = document.createElement('div');
+  sep.className = 'tierHead ctlHead';
+  sep.innerHTML = '<span>дії з вежами</span><i></i>';
+  el.rail.appendChild(sep);
+
   const extras: { id: CursorMode; key: string; cls: string; name: string; hint: string; sub: string; mark: string }[] = [
     { id:'up',   key:'U', cls:'', name:'Прокачати', hint:'Сильніша башта на тому самому місці.', sub:'ціна росте з рівнем', mark:'▲' },
     { id:'aim',  key:'T', cls:'', name:'Ціль',      hint:'Перший / останній / міцний / слабкий.', sub:'клац по башті — наступний режим', mark:'◎' },
@@ -995,7 +1002,19 @@ function autoJoinFromLink() {
    обривав цикл НАЗАВЖДИ: сторінка жива, мережа приймає дані, а гра стоїть.
    Саме так у гостя тік застигав на нулі. Тепер помилка не вбиває цикл і
    потрапляє в журнал. */
+/* Браузер зупиняє requestAnimationFrame у фоновій вкладці. Для одинака це
+   просто пауза, а в коопі — біда: лок-степ чекає команд обох сторін, тож
+   згорнута вкладка одного підвішує партію ОБОМ. Тому поки вкладку не
+   видно, кадри жене таймер: малювати нікому, але симуляція й мережа
+   мусять іти далі. На детермінізм це не впливає — симуляція живе на
+   тіках, а не на часі. */
+const HIDDEN_MS = 16;
 let frameErrTold = false;
+function schedule(fn: (now: number) => void): void {
+  if (typeof document !== 'undefined' && document.hidden)
+    setTimeout(() => fn(performance.now()), HIDDEN_MS);
+  else requestAnimationFrame(fn);
+}
 function frame(now: number) {
   try { frameBody(now); }
   catch (e: any) {
@@ -1006,7 +1025,7 @@ function frame(now: number) {
       say('Помилка в циклі гри: ' + msg, 'bad');
     }
   }
-  requestAnimationFrame(frame);
+  schedule(frame);
 }
 
 function frameBody(now) {
@@ -1127,7 +1146,12 @@ function digest() {
     else if (e.e === 'early') say('Достроково. +' + e.gold + ' зол. усім', 'good');
     else if (e.e === 'vote')  { if (e.of > 1 && e.n < e.of) say('Голос за прискорення: ' + e.n + '/' + e.of, 'note'); }
     else if (e.e === 'lost')  showLost();
-    else if (e.e === 'boom')  fx.push({ t:'ring', x:e.x, y:e.y, life:12, max:12, c:C('--t-mortar'), r:e.r });
+    /* Вибух малюється кольором ТІЄЇ вежі, що стріляла, і живе довше:
+       доти це був тонкий контур кольору мортири на чверть секунди, тож
+       вибух Криги чи Отрути виглядав однаково й майже непомітно — площа
+       здавалась несправною, хоч рахувалась правильно. */
+    else if (e.e === 'boom')  fx.push({ t:'ring', x:e.x, y:e.y, life:18, max:18,
+                                        c:C(TOOL_BY_KEY[e.k]?.swatch || '--t-mortar'), r:e.r });
     else if (e.e === 'bounty'){ stats.bounty++; fx.push({ t:'spark', x:e.x, y:e.y, life:22, max:22, c:C('--brass') }); }
     else if (e.e === 'kill')  { stats.kills++; fx.push({ t:'spark', x:e.x, y:e.y, life:10, max:10, c:C('--text-faint') }); }
     else if (e.e === 'build') { if (e.p === meId()) stats.built++; }
@@ -1247,20 +1271,22 @@ function renderRoster() {
   const rows = rosterRows();
   /* Смужка за головним показником — щоб відрив читався оком, без
      вчитування в цифри. Це і є вся суть панелі в коопі. */
-  const top = Math.max(1, ...rows.map(r => r.kills));
+  /* Рядок на гравця, а не таблиця: панель тепер клітина шапки, і сім
+     стовпчиків із заголовками робили її вдвічі вищою за решту. */
   el.rosterBody.innerHTML = rows.map((r, i) => {
     const id = identFor(r.p);
     const [pk, sk] = loadoutOf(r.p);
-    const prim = LOADOUT_BY_KEY[pk], sup = LOADOUT_BY_KEY[sk];
-    const tag = (lo: any) => lo
-      ? '<span class="fx" style="--fc:' + C('--f-' + lo.key) + '">' + escapeHtml(lo.name) + '</span>' : '';
-    return '<tr' + (r.p === netP() ? ' class="me"' : '') + '>' +
-      '<td><span class="dot" style="background:' + C(paletteCss(id.color)) + '"></span></td>' +
-      '<td><b>' + escapeHtml(identName(r.p)) + '</b>' + tag(prim) + tag(sup) +
-        (i === 0 && rows.length > 1 && r.kills > 0 ? '<span class="lead">веде</span>' : '') + '</td>' +
-      '<td class="bar"><span style="width:' + Math.round(r.kills * 100 / top) + '%"></span><u>' + r.kills + '</u></td>' +
-      '<td>' + r.dmg + '</td><td>' + r.towers + '</td>' +
-      '<td class="gold">' + r.gold + '</td><td>' + r.hp + '</td></tr>';
+    const facs = [LOADOUT_BY_KEY[pk], LOADOUT_BY_KEY[sk]].filter(Boolean)
+      .map(lo => escapeHtml(lo.name)).join(' + ');
+    const num = (v: number, cls = '') => '<u class="' + cls + '">' + v + '</u>';
+    return '<div class="pRow' + (r.p === netP() ? ' me' : '') + '">' +
+      '<span class="dot" style="background:' + C(paletteCss(id.color)) + '"></span>' +
+      '<b>' + escapeHtml(identName(r.p)) +
+        (i === 0 && rows.length > 1 && r.kills > 0 ? '<i>веде</i>' : '') + '</b>' +
+      '<span class="fx">' + facs + '</span>' +
+      '<span class="nums">' + num(r.kills) + num(r.dmg) + num(r.towers) +
+        num(r.gold, 'gold') + num(r.hp, 'hp') + '</span>' +
+      '</div>';
   }).join('');
 }
 
@@ -1452,8 +1478,15 @@ function render(alpha) {
     const a = f.life / f.max, x = f.x / SUB * TS, y = f.y / SUB * TS;
     ctx.globalAlpha = a;
     if (f.t === 'ring') {
-      ctx.strokeStyle = f.c; ctx.lineWidth = 2;
       const rr = f.r ? (f.r / SUB * TS) * (1 - a * .35) : TS * (1.5 - a);
+      // залита пляма показує саму ЗОНУ, контур — її межу; лише контуру
+      // було замало, щоб побачити, кого вибух насправді зачепив
+      ctx.save();
+      ctx.globalAlpha = a * .22;
+      ctx.fillStyle = f.c;
+      ctx.beginPath(); ctx.arc(x, y, rr, 0, 6.2832); ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = f.c; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(x, y, rr, 0, 6.2832); ctx.stroke();
     } else {
       ctx.fillStyle = f.c;

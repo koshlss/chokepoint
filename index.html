@@ -54,6 +54,13 @@
     <div class="stat solo"><div class="k">Веж</div><div class="v" id="rTowers">0</div></div>
     <div class="stat solo"><div class="k">Шкода</div><div class="v" id="rDmg">0</div></div>
     <div class="stat wide"><div class="k">Наступна хвиля</div><div class="v next" id="rNext">—</div></div>
+    <!-- Панель гравців — така сама клітина шапки, як і решта, а не окремий
+         блок під нею: у коопі два блоки один над одним робили шапку вдвічі
+         вищою, і стежити за показниками ставало незручно. -->
+    <div class="stat players" id="playersTop" hidden>
+      <div class="k">Гравці</div>
+      <div class="roster" id="rosterBody"></div>
+    </div>
     <!-- Керування ходом партії стоїть при показниках хвилі, а не під полем:
          це те, чим користуються щохвилі, і воно має бути там, куди й так
          дивишся. Під полем лишились налаштування показу. -->
@@ -62,17 +69,6 @@
       <button id="btnPause">Пауза</button>
       <button id="btnSpeed">1×</button>
     </div>
-  </div>
-
-  <div class="playersTop" id="playersTop" hidden>
-    <div class="identRow">
-      <input type="text" id="myName" maxlength="18" spellcheck="false" placeholder="Твій нік">
-      <span class="swatches" id="mySwatches"></span>
-    </div>
-    <table class="roster">
-      <thead><tr><th></th><th>Гравець</th><th>Вбито</th><th>Шкода</th><th>Веж</th><th>Золото</th><th>HP</th></tr></thead>
-      <tbody id="rosterBody"></tbody>
-    </table>
   </div>
 
   <div class="main">
@@ -118,10 +114,17 @@
 
       <div class="aside">
         <h2>Кооператив</h2>
-        <div class="coop">
+        <div class="coopBox">
           <div class="coopRow">
             <button id="btnLobbyHost" class="primary">Створити лобі</button>
             <span class="netState" id="netState"><span class="dot"></span>Соло</span>
+          </div>
+          <!-- Нік і колір обираються раз за сесію, тож живуть тут, а не в
+               шапці: там кожен рядок відбирає місце в тих показників, за
+               якими стежать щохвилі. -->
+          <div class="identRow">
+            <input type="text" id="myName" maxlength="18" spellcheck="false" placeholder="Твій нік">
+            <span class="swatches" id="mySwatches"></span>
           </div>
           <div class="roomLink" id="roomLink" hidden>
             <span id="roomLinkText"></span>
