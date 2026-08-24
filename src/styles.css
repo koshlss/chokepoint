@@ -70,7 +70,9 @@ body{
   font-family:var(--body); font-size:14px; line-height:1.5;
   -webkit-font-smoothing:antialiased;
 }
-.wrap{max-width:1240px; margin:0 auto; padding:18px 18px 40px; display:flex; flex-direction:column; gap:14px; min-height:100vh}
+/* Ширше за квадрат: поле 26×18 саме по собі широке, і на 16:9 екрані
+   вузька колонка змушувала гортати сторінку замість дивитись на гру. */
+.wrap{max-width:1720px; margin:0 auto; padding:18px 22px 40px; display:flex; flex-direction:column; gap:14px; min-height:100vh}
 
 /* ─── шапка ─── */
 .masthead{display:flex; align-items:baseline; justify-content:space-between; gap:16px; flex-wrap:wrap;
@@ -106,8 +108,13 @@ button:disabled{opacity:.4; cursor:default}
 button:disabled:hover{background:var(--panel); border-color:var(--line)}
 
 /* ─── стрічка стану ─── */
-.readout{display:grid; grid-template-columns:repeat(auto-fit,minmax(104px,1fr)); gap:1px;
+/* Показники беруть стільки, скільки треба цифрам; керування — решту. */
+.readout{display:grid; grid-template-columns:repeat(auto-fit,minmax(96px,1fr)); gap:1px;
   background:var(--line-soft); border:1px solid var(--line); border-radius:var(--r); overflow:hidden}
+@media (min-width:1181px){
+  .readout{grid-template-columns:repeat(7,minmax(96px,1fr)) minmax(320px,1.6fr)}
+  .readout.coop{grid-template-columns:repeat(4,minmax(96px,1fr)) minmax(320px,1.6fr)}
+}
 .stat{background:var(--panel); padding:8px 12px; display:flex; flex-direction:column; gap:2px}
 .stat .k{font-family:var(--display); font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:var(--text-faint)}
 .stat .v{font-family:var(--mono); font-size:19px; font-variant-numeric:tabular-nums; color:var(--text)}
@@ -119,6 +126,12 @@ button:disabled:hover{background:var(--panel); border-color:var(--line)}
 /* У коопі особиста стата ховається з шапки — там важливіше порівняння,
    і воно живе в панелі гравців нижче. */
 .readout.coop .stat.solo{display:none}
+
+/* Керування ходом партії — остання клітина рядка показників. Кнопки, а
+   не цифри, тож клітина інакша: без підпису й із власним ритмом. */
+.stat.ctl{flex-direction:row; align-items:center; gap:6px; padding:6px 10px; flex-wrap:wrap}
+.stat.ctl button{white-space:nowrap}
+.stat.ctl #btnWave{flex:1; min-width:150px}
 .stat.wide .v{font-size:15px}
 
 .playersTop{background:var(--panel); border:1px solid var(--line); border-radius:var(--r);
@@ -161,11 +174,17 @@ button:disabled:hover{background:var(--panel); border-color:var(--line)}
 .tool.locked:hover{background:var(--panel)}
 
 /* ─── головна сітка ─── */
-.main{display:grid; grid-template-columns:236px minmax(0,1fr); gap:14px; align-items:start}
+.main{display:grid; grid-template-columns:404px minmax(0,1fr); gap:16px; align-items:start}
+@media (max-width:1180px){ .main{grid-template-columns:236px minmax(0,1fr); gap:14px} }
 @media (max-width:860px){ .main{grid-template-columns:1fr} }
 
-/* ─── арсенал ─── */
-.rail{display:flex; flex-direction:column; gap:6px}
+/* ─── арсенал ───
+   Дві колонки: з десятьма баштами одна витягувалась удвічі довшою за поле,
+   і найпотрібніші кнопки («Прокачати», «Знести») йшли за межу екрана.
+   Заголовки рівнів розтягуються на обидві. */
+.rail{display:grid; grid-template-columns:1fr 1fr; gap:6px; align-content:start}
+.rail h2, .rail .tierHead{grid-column:1 / -1}
+@media (max-width:1180px){ .rail{grid-template-columns:1fr} }
 .rail h2, .aside h2{font-family:var(--display); font-size:10px; letter-spacing:.2em;
   text-transform:uppercase; color:var(--text-faint); margin:0 0 2px; font-weight:600}
 .tool{

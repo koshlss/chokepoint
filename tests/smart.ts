@@ -120,6 +120,50 @@ export function runSmart(mapIdx: number, mode: number, seed: string, opts: Smart
         if (x >= 0 && y >= 0 && x < GW && y < GH) near.add(idx(x, y));
       }
     }
+    /* Цінність вежі-позначки — не її власна шкода, а множник до шкоди
+       ВСІЄЇ армії там, де вона дістає. Без цього гравець ніколи не купив
+       би допоміжних: поодинці вони програють за шкодою на золото, а
+       заради чого вони існують — не видно.
+
+       Але позначки НЕ СКЛАДАЮТЬСЯ: діє найсильніша. Тож друга крижана
+       вежа на вже позначеній ділянці не варта нічого. Рахуємо лише НОВЕ
+       покриття — інакше гравець скуповує їх сотнями й стенд бреше. */
+    const route: number[] = mode === MODE_FIXED ? sim.route : pathTiles(sim);
+    const steps = route.length;
+    /* Міряємо все в «шкода × накриті кроки» — це пропорційно тому, скільки
+       вежа встигне завдати крипу за прохід. Позначку теж треба в цих самих
+       одиницях, інакше порівнюємо різні речі: вона додає mark% до тієї
+       частини армійської шкоди, що припадає на позначені кроки. */
+    let armyValue = 0;
+    const markedSteps = new Set<number>();
+    for (const tw of sim.towers) {
+      const b = TOOL_BY_KEY[tw.k];
+      armyValue += worth(b, tw.st.dmg) * cover(sim, tw.x, tw.y, tw.st.range);
+      if (!b.mark) continue;
+      const r2 = tw.st.range * tw.st.range;
+      const cx = tw.x * SUB + (SUB >> 1), cy = tw.y * SUB + (SUB >> 1);
+      for (let k = 0; k < route.length; k++) {
+        const p = route[k];
+        const dx = (p % GW) * SUB + (SUB >> 1) - cx;
+        const dy = ((p / GW) | 0) * SUB + (SUB >> 1) - cy;
+        if (dx * dx + dy * dy <= r2) markedSteps.add(k);
+      }
+    }
+    /** Скільки кроків траси ця клітина позначила б УПЕРШЕ. */
+    const freshMark = (x: number, y: number, range: number) => {
+      const r2 = range * range;
+      const cx = x * SUB + (SUB >> 1), cy = y * SUB + (SUB >> 1);
+      let n = 0;
+      for (let k = 0; k < route.length; k++) {
+        if (markedSteps.has(k)) continue;
+        const p = route[k];
+        const dx = (p % GW) * SUB + (SUB >> 1) - cx;
+        const dy = ((p / GW) | 0) * SUB + (SUB >> 1) - cy;
+        if (dx * dx + dy * dy <= r2) n++;
+      }
+      return n;
+    };
+
     for (const t of allowed()) {
       if (t.cost > gold) continue;
       for (const i of near) {
@@ -136,7 +180,9 @@ export function runSmart(mapIdx: number, mode: number, seed: string, opts: Smart
           if (len < 0) continue;                  // повністю перекрив
           c += Math.max(0, len - sim.pathLength()) * 3;
         }
-        const score = worth(t, t.dmg) * c / t.cost;
+        let value = worth(t, t.dmg) * c;
+        if (t.mark) value += (t.mark / 100) * armyValue * (freshMark(x, y, t.range) / Math.max(1, steps));
+        const score = value / t.cost;
         if (!best || score > best.score) best = { kind: 'build', score, x, y, k: t.key, cost: t.cost };
       }
     }

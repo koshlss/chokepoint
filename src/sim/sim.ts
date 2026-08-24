@@ -208,6 +208,7 @@ class Sim {
       shot:   b.shot,
       splash: b.splash ? ((b.splash * u.range) / 100) | 0 : 0,
       spread: b.spread ? ((b.spread * u.range) / 100) | 0 : 0,
+      mark:   b.mark | 0,
       /* Стеля 70% боронить від «вічно стоїть» на звичайному морозі, але
          повну заморозку вона б мовчки скасувала — та й перестала б бути
          повною. Тому 100 проходить як є. */
@@ -391,7 +392,7 @@ class Sim {
       x: this.sx * SUB + (SUB >> 1), y: this.sy * SUB + (SUB >> 1),
       px: this.sx * SUB + (SUB >> 1), py: this.sy * SUB + (SUB >> 1),
       hp, maxHp: hp, sp: s.sp, kind: s.kind, gold,
-      slowT: 0, slowP: 0, slowImm: 0, dotT: 0, dotD: 0, dotCd: 0, dotMax: 0, hurt: 0,
+      slowT: 0, slowP: 0, slowImm: 0, vulnT: 0, vulnP: 0, dotT: 0, dotD: 0, dotCd: 0, dotMax: 0, hurt: 0,
     };
     this.creeps.push(c);
     const n = this.mode === MODE_FIXED
@@ -447,6 +448,10 @@ class Sim {
         if (--c.dotCd <= 0) { c.dotCd = 15; c.hp -= c.dotD; }
         // отрута вигоріла — накопичене й стеля скидаються разом із нею
         if (c.dotT === 0) { c.dotD = 0; c.dotMax = 0; }
+      }
+      if (c.vulnT > 0) {
+        c.vulnT--;
+        if (c.vulnT === 0) c.vulnP = 0;
       }
       if (c.hp <= 0) { this.kill(c, -1); continue; }
 
@@ -540,7 +545,7 @@ class Sim {
       t.ax = tgt.x - cx; t.ay = tgt.y - cy;      // напрям ствола цілими; кут рахує рендер
       this.shots.push({
         x:cx, y:cy, px:cx, py:cy, tid:tgt.id, k:t.k, owner:t.owner,
-        dmg:st.dmg, sp:st.shot, splash:st.splash, spread:st.spread,
+        dmg:st.dmg, sp:st.shot, splash:st.splash, spread:st.spread, mark:st.mark,
         slow:st.slow, slowT:st.slowT, dot:st.dot, dotT:st.dotT,
       });
     }
@@ -563,6 +568,9 @@ class Sim {
   }
 
   hurt(c, dmg, owner) {
+    /* Позначена ціль вразливіша. Множник іде ДО броні: інакше він майже
+       не діяв би саме там, де потрібен найбільше — на титанах. */
+    if (c.vulnT > 0) dmg = ((dmg * (100 + c.vulnP)) / 100) | 0;
     const a = ARMOR[c.kind];
     /* Броня зрізає не більше 60% удару.
 
@@ -614,10 +622,14 @@ class Sim {
        Тепер уповільнення діє SLOW_T тіків із SLOW_T + SLOW_IMMUNE, тобто
        сталу частку часу незалежно від щільності траси. Відсоток лишається
        відчутним — обмежена саме тривалість, а не сила. */
+    /* landed — на скільки тіків ефект СПРАВДІ ліг цього разу. Саме на цей
+       строк чіпляється позначка (див. нижче). */
+    let landed = 0;
     if (s.slow > 0) {
       if (c.slowT <= 0 && c.slowImm <= 0) {
         c.slowP = s.slow;
         c.slowT = s.slowT;
+        landed = s.slowT;
       } else if (c.slowT > 0 && s.slow > c.slowP) {
         /* Сильніше перебиває слабше, але НЕ продовжує тривалість. Інакше
            дешевий частий мороз блокував би власну повну заморозку тієї ж
@@ -642,6 +654,24 @@ class Sim {
       const cap = c.dotMax * 2;
       c.dotD = c.dotD + s.dot > cap ? cap : c.dotD + s.dot;
       if (c.dotCd <= 0) c.dotCd = 15;
+      if (s.dotT > landed) landed = s.dotT;
+    }
+
+    /* Позначка ЇДЕ НА САМОМУ ЕФЕКТІ, тому ставиться останньою — їй треба
+       знати, чи ефект справді ліг.
+
+       Це і є вся різниця між допоміжними. Мороз має вікно несприйнятливості
+       (SLOW_IMMUNE), тож позначка Криги сама по собі переривчаста — близько
+       45% часу, зате сильна. Тління такого вікна не має й тримається довго,
+       тож позначка Отрути майже безперервна, зате слабка.
+
+       Спершу я прив'язав тривалість позначки просто до slowT/dotT — і Крига
+       поглинула все: Кріостат стріляє кожні 9 тіків, тож «коротка» позначка
+       поновлювалась безперервно й ставала вічною. Різниця в тривалості не
+       означала нічого. */
+    if (s.mark > 0 && landed > 0) {
+      if (s.mark >= c.vulnP || c.vulnT <= 0) c.vulnP = s.mark;
+      if (landed > c.vulnT) c.vulnT = landed;
     }
   }
 
