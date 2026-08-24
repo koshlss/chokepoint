@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Sim } from '../src/sim/sim';
-import { MODE_FIXED } from '../src/sim/constants';
+import { MODE_FIXED, MODE_MAZE } from '../src/sim/constants';
 import { LOADOUTS, LOADOUT_BY_KEY, FULL_ARSENAL, mergeLoadouts, toolsOf } from '../src/content/loadouts';
 import { TIER_WAVE } from '../src/content/types';
 import { TOOL_BY_KEY, TOOLS } from '../src/content/towers';
@@ -59,13 +59,37 @@ describe('фракції', () => {
   });
 
   it('без фракції не обмежує вибір — але рівні відкриваються все одно', () => {
-    // свіжа партія на кожну башту: усі поспіль не влізли б у стартове золото
+    // свіжа партія на кожну башту: усі поспіль не влізли б у стартове золото.
+    // Режим беремо той, де башта взагалі має сенс: бар'єр існує лише в лабіринті
     for (const t of TOOLS) {
-      const sim: any = new Sim('L-1', 100, 1, 0, MODE_FIXED);
+      const mode = t.mazeOnly ? MODE_MAZE : MODE_FIXED;
+      const sim: any = new Sim('L-1', 100, 1, 0, mode);
       expect(sim.arsenals).toBeNull();
       sim.wave = TIER_WAVE[t.tier];
       expect(tryBuild(sim, 0, t.key), t.key).toBe(true);
     }
+  });
+
+  /* Перевірено прогоном: 375 поставлених бар'єрів на фіксованій трасі не
+     змінили ні її довжину, ні жодного життя. Чистий злив золота на першому
+     ж слоті арсеналу — тож там його не пропонують і не дозволяють. */
+  it('бар\'єр не ставиться на фіксованій трасі', () => {
+    const sim: any = new Sim('L-6', 100, 1, 0, MODE_FIXED);
+    expect(tryBuild(sim, 0, 'wall')).toBe(false);
+    const why = sim.events.filter((e: any) => e.e === 'deny').map((e: any) => e.why);
+    expect(why).toContain('тільки в лабіринті');
+  });
+
+  it('бар\'єр не коштує гравцю нічого, коли відмовлено', () => {
+    const sim: any = new Sim('L-7', 100, 1, 0, MODE_FIXED);
+    const gold = sim.players[0].gold;
+    tryBuild(sim, 0, 'wall');
+    expect(sim.players[0].gold).toBe(gold);
+  });
+
+  it('у лабіринті бар\'єр працює як і працював', () => {
+    const sim: any = new Sim('L-8', 100, 1, 0, MODE_MAZE);
+    expect(tryBuild(sim, 0, 'wall')).toBe(true);
   });
 
   it('фракція дозволяє своє й відмовляє чужому', () => {
@@ -170,7 +194,7 @@ describe('рівні башт', () => {
 });
 
 describe('ефекти пострілу', () => {
-  const freshCreep = () => ({ dotD: 0, dotT: 0, dotCd: 0, dotMax: 0, slowP: 0, slowT: 0 });
+  const freshCreep = () => ({ dotD: 0, dotT: 0, dotCd: 0, dotMax: 0, slowP: 0, slowT: 0, slowImm: 0 });
 
   /* Доти отрута просто перезаписувалась, тож десять токсинових веж по одній
      цілі давали шкоду однієї — фракція, побудована на отруті, була найгіршою
@@ -220,19 +244,53 @@ describe('ефекти пострілу', () => {
     expect(c.dotT).toBe(60);
   });
 
-  it('сильніше сповільнення не збивається слабшим', () => {
-    const sim: any = new Sim('E-3', 100, 1, 0, MODE_FIXED);
+  /* Мороз навмисно НЕ поновлюється, поки діє. Інакше частка часу під ним
+     залежала від покриття: на трасі, що перетинає себе, вежі дістають до
+     крипа безперервно, мороз ніколи не спадає й множить час під вогнем
+     усієї армії. Крига давала 22 хвилі на «Вузлі» й 8.7 на «Гребені». */
+  it('мороз не поновлюється, поки діє', () => {
+    const sim: any = new Sim('E-6', 100, 1, 0, MODE_FIXED);
     const c: any = freshCreep();
-    sim.affect(c, { slow: 45, slowT: 45 });
-    sim.affect(c, { slow: 22, slowT: 36 });
+    sim.affect(c, { slow: 45, slowT: 30 });
     expect(c.slowP).toBe(45);
+    c.slowT = 5;
+    sim.affect(c, { slow: 45, slowT: 30 });
+    expect(c.slowT, 'тривалість не продовжилась').toBe(5);
+  });
+
+  it('після морозу крип якийсь час несприйнятливий', () => {
+    const sim: any = new Sim('E-7', 100, 1, 0, MODE_FIXED);
+    const c: any = freshCreep();
+    c.slowImm = 10;                       // мороз щойно спав
+    sim.affect(c, { slow: 45, slowT: 30 });
+    expect(c.slowP, 'поки несприйнятливий — не мерзне').toBe(0);
+    c.slowImm = 0;
+    sim.affect(c, { slow: 45, slowT: 30 });
+    expect(c.slowP).toBe(45);
+  });
+
+  it('частка часу під морозом не залежить від кількості веж', () => {
+    // саме це й відв'язує цінність морозу від щільності траси
+    const sim: any = new Sim('E-8', 100, 1, 0, MODE_FIXED);
+    const one: any = freshCreep();
+    const many: any = freshCreep();
+    for (let t = 0; t < 300; t++) {
+      sim.affect(one, { slow: 45, slowT: 28 });
+      for (let k = 0; k < 8; k++) sim.affect(many, { slow: 45, slowT: 28 });
+      for (const c of [one, many]) {
+        if (c.slowT > 0) { c.slowT--; if (c.slowT === 0) { c.slowP = 0; c.slowImm = 20; } }
+        else if (c.slowImm > 0) c.slowImm--;
+        c.ticks = (c.ticks || 0) + (c.slowT > 0 ? 1 : 0);
+      }
+    }
+    expect(many.ticks, 'вісім веж не морозять довше за одну').toBe(one.ticks);
   });
 
   it('башта з площею таки накладає свій ефект — раніше мовчки ні', () => {
     const sim: any = new Sim('E-4', 100, 1, 0, MODE_FIXED);
     sim.creeps = [
-      { id: 1, x: 100, y: 100, hp: 9999, dotD: 0, dotT: 0, dotCd: 0, dotMax: 0, slowP: 0, slowT: 0, hurt: 0, kind: 0 },
-      { id: 2, x: 110, y: 100, hp: 9999, dotD: 0, dotT: 0, dotCd: 0, dotMax: 0, slowP: 0, slowT: 0, hurt: 0, kind: 0 },
+      { id: 1, x: 100, y: 100, hp: 9999, dotD: 0, dotT: 0, dotCd: 0, dotMax: 0, slowP: 0, slowT: 0, slowImm: 0, hurt: 0, kind: 0 },
+      { id: 2, x: 110, y: 100, hp: 9999, dotD: 0, dotT: 0, dotCd: 0, dotMax: 0, slowP: 0, slowT: 0, slowImm: 0, hurt: 0, kind: 0 },
     ];
     sim.impact({ x: 105, y: 100, k: 'glacier', splash: 200, dmg: 1, owner: 0, slow: 25, slowT: 40 }, sim.creeps[0]);
     for (const c of sim.creeps) expect(c.slowP, 'крип ' + c.id).toBe(25);

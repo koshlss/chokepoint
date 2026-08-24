@@ -7,6 +7,11 @@ import { TOOL_BY_KEY, UPG, MAX_LVL, AIMS } from '../content/towers';
 import { ARMOR, waveSpec } from '../content/waves';
 import { tierAt, TIER_WAVE } from '../content/types';
 
+/* Скільки тіків крип не піддається морозу після того, як попередній спав.
+   Разом зі slowT задає СТАЛУ частку часу під уповільненням — саме це й
+   відв'язує цінність морозу від щільності траси. */
+const SLOW_IMMUNE = 20;
+
 class Sim {
   arsenals: Set<string>[] | null;
   blocked: any;
@@ -231,6 +236,10 @@ class Sim {
   allows(p: number, key: string): boolean {
     const tool = TOOL_BY_KEY[key];
     if (!tool) return false;
+    /* Бар'єр на фіксованій трасі не робить нічого: перевірено прогоном —
+       375 поставлених бар'єрів не змінили ні довжину траси, ні жодного
+       життя. Це був чистий злив золота на першому ж слоті арсеналу. */
+    if (tool.mazeOnly && this.mode === MODE_FIXED) return false;
     if (tool.tier > this.tier()) return false;
     if (!this.arsenals) return true;
     const a = this.arsenals[p] || this.arsenals[0];
@@ -260,7 +269,9 @@ class Sim {
       if (!this.allows(cmd.p, cmd.k)) {
         // причину розрізняємо, бо це різні поради гравцю: одне — «не твоя
         // фракція», інше — «ще зарано, чекай хвилі»
-        const why = tool.tier > this.tier()
+        const why = (tool.mazeOnly && this.mode === MODE_FIXED)
+          ? 'тільки в лабіринті'
+          : tool.tier > this.tier()
           ? 'рівень ' + tool.tier + ' з хвилі ' + TIER_WAVE[tool.tier]
           : 'не у твоїй фракції';
         this.events.push({ e:'deny', p:cmd.p, why });
@@ -376,7 +387,7 @@ class Sim {
       x: this.sx * SUB + (SUB >> 1), y: this.sy * SUB + (SUB >> 1),
       px: this.sx * SUB + (SUB >> 1), py: this.sy * SUB + (SUB >> 1),
       hp, maxHp: hp, sp: s.sp, kind: s.kind, gold,
-      slowT: 0, slowP: 0, dotT: 0, dotD: 0, dotCd: 0, dotMax: 0, hurt: 0,
+      slowT: 0, slowP: 0, slowImm: 0, dotT: 0, dotD: 0, dotCd: 0, dotMax: 0, hurt: 0,
     };
     this.creeps.push(c);
     const n = this.mode === MODE_FIXED
@@ -437,7 +448,11 @@ class Sim {
 
       // сповільнення
       let sp = c.sp;
-      if (c.slowT > 0) { c.slowT--; sp = ((sp * (100 - c.slowP)) / 100) | 0; if (sp < 1) sp = 1; }
+      if (c.slowT > 0) {
+        c.slowT--;
+        sp = ((sp * (100 - c.slowP)) / 100) | 0; if (sp < 1) sp = 1;
+        if (c.slowT === 0) { c.slowP = 0; c.slowImm = SLOW_IMMUNE; }
+      } else if (c.slowImm > 0) c.slowImm--;
 
       // рух по осях — ціль завжди ортогональний сусід
       let budget = sp, arrived = false;
@@ -582,9 +597,22 @@ class Sim {
      Ефекти цілочисельні й порядок обходу сталий, тож детермінізм
      зберігається. */
   affect(c, s) {
-    if (s.slow > 0) {
-      if (s.slow >= c.slowP || c.slowT <= 0) c.slowP = s.slow;
-      if (s.slowT > c.slowT) c.slowT = s.slowT;
+    /* Мороз не поновлюється, поки діє, і після нього крип якийсь час
+       несприйнятливий.
+
+       Без цього частка часу під морозом залежала від ПОКРИТТЯ: на трасі,
+       що перетинає сама себе, одна вежа дістає до крипа двічі, мороз
+       тримається безперервно, і він множить час під вогнем усієї армії —
+       не лише крижаної. Тому Крига давала 22 хвилі на «Вузлі» й 8.7 на
+       «Гребені», і жодне число не зводило це докупи: нижче порога вона
+       нічого не вбивала, вище — вигравала з відривом.
+
+       Тепер уповільнення діє SLOW_T тіків із SLOW_T + SLOW_IMMUNE, тобто
+       сталу частку часу незалежно від щільності траси. Відсоток лишається
+       відчутним — обмежена саме тривалість, а не сила. */
+    if (s.slow > 0 && c.slowT <= 0 && c.slowImm <= 0) {
+      c.slowP = s.slow;
+      c.slowT = s.slowT;
     }
     /* Отрута НАКОПИЧУЄТЬСЯ, але не безмежно: до подвійної сили
        найпотужнішого джерела на цій цілі.

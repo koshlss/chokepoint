@@ -188,9 +188,12 @@ function loadoutOf(p: number): string {
   if (net.solo) return myLoadout;
   return p === netP() ? myLoadout : mateLoadout;
 }
-/** Башти, доступні мені за фракцією — незалежно від того, чи вже відкрито рівень. */
+/** Башти, доступні мені за фракцією — незалежно від того, чи вже відкрито рівень.
+ *  Мазингові (бар'єр) відпадають на фіксованій трасі: там вони не роблять
+ *  нічого, і показувати їх означало б заманювати в порожню покупку. */
 function myTools(): Tool[] {
-  return TOOLS.filter(t => toolsOf(myLoadout).includes(t.key));
+  const fixed = sim ? sim.mode === MODE_FIXED : parseInt(el.modeSel.value, 10) === MODE_FIXED;
+  return TOOLS.filter(t => toolsOf(myLoadout).includes(t.key) && !(t.mazeOnly && fixed));
 }
 
 function setLoadout(key: string, broadcast = true) {
@@ -216,7 +219,7 @@ el.loadoutSel.onchange = () => setLoadout(el.loadoutSel.value);
 
 function renderFactionCards() {
   el.veilFactions.innerHTML = LOADOUTS.map(lo => {
-    const towers = lo.tools.filter(k => k !== 'wall').map(k => TOOL_BY_KEY[k]);
+    const towers = lo.tools.map(k => TOOL_BY_KEY[k]).filter(t => !t.mazeOnly);
     const rows = ([1, 2, 3] as const).map(tier => {
       const own = towers.filter(t => t.tier === tier);
       if (!own.length) return '';

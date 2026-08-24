@@ -15,5 +15,8 @@ export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts'],
     environment: 'node',
+    /* Сторожі балансу ганяють цілі забіги. У лабіринті вони довгі — бот
+       доходить до стелі, — і стандартних 5 с не вистачає. */
+    testTimeout: 60000,
   },
 });
