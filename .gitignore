@@ -1,5 +1,17 @@
+node_modules/
+dist/
+
+# згенеровані тестові стенди
 bench.html
 nettest.html
 synctest.html
-session/
 dueltest.html
+session/
+
+# знімок моноліта до розколу — живе в історії master, у дереві не потрібен
+index.html.mono
+
+# чернетки розбору MPQ (Burbenog), робота призупинена
+mpq-extract*.ps1
+mpq-extract*.html
+burbenog-extract/
