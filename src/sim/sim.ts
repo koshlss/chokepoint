@@ -7,6 +7,7 @@ import { TOOL_BY_KEY, UPG, MAX_LVL, AIMS } from '../content/towers';
 import { ARMOR, waveSpec } from '../content/waves';
 import { tierAt, TIER_WAVE } from '../content/types';
 import { buildTicks } from '../content/power';
+import { choicesAt, statsFor, perkCode } from '../content/upgrades';
 
 /* Скільки тіків крип не піддається морозу після того, як попередній спав.
    Разом зі slowT задає СТАЛУ частку часу під уповільненням — саме це й
@@ -201,25 +202,17 @@ class Sim {
     return d < 0 ? (1 << 29) : d;
   }
 
-  /* Характеристики рахуємо раз — при будівництві й прокачці. */
+  /* Характеристики рахуємо раз — при будівництві й прокачці.
+     Сама формула живе в content/upgrades.ts: нею ж міряє баланс, тож
+     стенд не може розійтися з грою. */
   recalcTower(t) {
-    const b = TOOL_BY_KEY[t.k], u = UPG[t.lvl];
-    t.st = {
-      cd:     b.cd,
-      dmg:    ((b.dmg * u.dmg) / 100) | 0,
-      range:  ((b.range * u.range) / 100) | 0,
-      shot:   b.shot,
-      splash: b.splash ? ((b.splash * u.range) / 100) | 0 : 0,
-      spread: b.spread ? ((b.spread * u.range) / 100) | 0 : 0,
-      mark:   b.mark | 0,
-      /* Стеля 70% боронить від «вічно стоїть» на звичайному морозі, але
-         повну заморозку вона б мовчки скасувала — та й перестала б бути
-         повною. Тому 100 проходить як є. */
-      slow:   b.slow ? (b.slow >= 100 ? 100 : Math.min(70, b.slow + (t.lvl - 1) * 6)) : 0,
-      slowT:  b.slowT | 0,
-      dot:    b.dot ? ((b.dot * u.dmg) / 100) | 0 : 0,
-      dotT:   b.dotT | 0,
-    };
+    t.st = statsFor(TOOL_BY_KEY[t.k], UPG[t.lvl], t.lvl, t.up);
+  }
+  /* Що пропонують цій вежі на наступному рівні. Порожньо — вибору немає,
+     прокачка йде просто вгору (так качаються прості вежі на другому). */
+  upChoices(t) {
+    if (t.lvl >= MAX_LVL) return [];
+    return choicesAt(TOOL_BY_KEY[t.k], t.lvl + 1, t.up);
   }
   upgradeCost(t) {
     if (t.lvl >= MAX_LVL) return -1;
@@ -300,7 +293,7 @@ class Sim {
       // freshSpent — вкладене після останньої межі хвилі: вертається повністю
       const nt = { x:cmd.x, y:cmd.y, k:tool.key, cd:0, owner:cmd.p, ax:1, ay:0,
                    lvl:1, spent:tool.cost, freshSpent:tool.cost, aim:0,
-                   build:buildTicks(tool.cost) };
+                   build:buildTicks(tool.cost), up:[] as string[] };
       this.recalcTower(nt);
       this.towers.push(nt);
       this.events.push({ e:'build', p:cmd.p, x:cmd.x, y:cmd.y, k:tool.key, cost:tool.cost });
@@ -322,14 +315,22 @@ class Sim {
       const t = this.towerAt(cmd.x, cmd.y);
       if (!t) return;
       if (t.lvl >= MAX_LVL) { this.events.push({ e:'deny', p:cmd.p, why:'вже максимум' }); return; }
+      /* Гілку перевіряємо ДО списання: команда приходить мережею, і
+         підсунутий чужий ключ інакше розвів би дошки. Порожній вибір
+         дозволений лише там, де вибору справді немає. */
+      const opts = this.upChoices(t);
+      if (opts.length && !opts.some(o => o.key === cmd.k)) {
+        this.events.push({ e:'deny', p:cmd.p, why:'невідома гілка' }); return;
+      }
       const cost = this.upgradeCost(t);
       if (p.gold < cost) { this.events.push({ e:'deny', p:cmd.p, why:'мало золота' }); return; }
       p.gold -= cost;
+      t.up.push(opts.length ? cmd.k : '');
       t.lvl++; t.spent += cost; t.freshSpent += cost;
       this.recalcTower(t);
       // прокачка теж займає час, і теж пропорційно вкладеному
       t.build = buildTicks(cost);
-      this.events.push({ e:'up', p:cmd.p, x:cmd.x, y:cmd.y, lvl:t.lvl });
+      this.events.push({ e:'up', p:cmd.p, x:cmd.x, y:cmd.y, lvl:t.lvl, k:cmd.k || '' });
 
     } else if (cmd.t === 'aim') {
       const t = this.towerAt(cmd.x, cmd.y);
@@ -748,7 +749,8 @@ class Sim {
     mix(this.mapIdx); mix(this.mode); mix(this.diff); mix(this.cov);
     mix(this.tick); mix(this.lives); mix(this.wave); mix(this.rng); mix(this.waveVotes.size);
     for (const p of this.players) { mix(p.gold); mix(p.dmg); mix(p.kills); }
-    for (const t of this.towers) { mix(t.x); mix(t.y); mix(t.cd); mix(t.lvl); mix(t.aim); mix(t.build); mix(t.k.charCodeAt(0)); }
+    for (const t of this.towers) { mix(t.x); mix(t.y); mix(t.cd); mix(t.lvl); mix(t.aim); mix(t.build); mix(t.k.charCodeAt(0));
+      for (const u of t.up) mix(perkCode(u)); }   // гілки міняють характеристики, тож теж у хеш
     for (const c of this.creeps) { mix(c.id); mix(c.x); mix(c.y); mix(c.hp); mix(c.slowT); }
     for (const s of this.shots)  { mix(s.x); mix(s.y); mix(s.tid); }
     return (h >>> 0).toString(16).padStart(8, '0');

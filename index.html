@@ -104,6 +104,14 @@
         <!-- Підказка по вежі під курсором: самих кольорів мало, щоб їх
              розрізняти, а клікати заради перевірки — зайвий крок. -->
         <div class="towerTip" id="towerTip" hidden></div>
+        <!-- Вибір гілки прокачки. Стоїть на дошці біля самої вежі, а не
+             в панелі збоку: рішення стосується конкретної вежі, і воно
+             має читатись там, куди дивишся. -->
+        <div class="upgPick" id="upgPick" hidden>
+          <div class="head"><b id="upgTitle"></b><span id="upgCost"></span></div>
+          <div class="opts" id="upgOpts"></div>
+          <div class="foot">Esc — скасувати</div>
+        </div>
         <div class="boardbar">
           <label class="toggle"><input type="checkbox" id="showPath" checked> Шлях</label>
           <label class="toggle"><input type="checkbox" id="showRange" checked> Радіус</label>

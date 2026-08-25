@@ -232,6 +232,48 @@ window.addEventListener('load', async () => {
       if (sim.buildable(x, y) && !sim.towerAt(x, y)) { empty = { x, y }; break; }
     if (empty) { at(empty.x, empty.y); check('на порожній клітині підказки немає', await until(() => tip.hidden === true)); }
     cv.dispatchEvent(new w.MouseEvent('mouseleave', { bubbles:true }));
+
+    /* 0з. Вибір гілки прокачки. Ставимо вежу, якій є з чого обирати,
+           і перевіряємо, що вікно з'являється, а Esc його прибирає. */
+    let spot2 = null;
+    for (let y = 0; y < 18 && !spot2; y++) for (let x = 0; x < 26; x++)
+      if (sim.buildable(x, y) && !sim.towerAt(x, y)) { spot2 = { x, y }; break; }
+    sim.players[0].gold = 99999;
+    sim.wave = 12;                       // відкриваємо рівні, щоб було що качати
+    sim.apply({ t:'build', p:0, seq:1, x:spot2.x, y:spot2.y, k:'lance' });
+    const tw = sim.towerAt(spot2.x, spot2.y);
+    check('вежа з деревом прокачки поставлена', !!tw);
+    if (tw) {
+      tw.build = 0;
+      check('вежа пропонує дві гілки', sim.upChoices(tw).length === 2,
+            sim.upChoices(tw).map(p => p.name).join(' / '));
+      d.querySelector('.tool[data-mode="up"]').click();
+      cv.dispatchEvent(new w.MouseEvent('mousedown', { button:0, bubbles:true,
+        clientX: r.left + (spot2.x + 0.5) * cell, clientY: r.top + (spot2.y + 0.5) * cell }));
+      const pick = d.getElementById('upgPick');
+      check('вікно вибору гілки з\'являється', await until(() => pick.hidden === false));
+      check('у вікні саме дві рівноправні пропозиції',
+            d.querySelectorAll('#upgOpts button').length === 2);
+      w.dispatchEvent(new w.KeyboardEvent('keydown', { key:'Escape', bubbles:true }));
+      check('Esc закриває вікно вибору', await until(() => pick.hidden === true));
+      check('скасований вибір нічого не змінив', tw.lvl === 1 && tw.up.length === 0);
+
+      // а тепер справді обираємо — вежа має змінитись саме так, як обіцяно
+      const before = { range: tw.st.range, dmg: tw.st.dmg };
+      cv.dispatchEvent(new w.MouseEvent('mousedown', { button:0, bubbles:true,
+        clientX: r.left + (spot2.x + 0.5) * cell, clientY: r.top + (spot2.y + 0.5) * cell }));
+      await until(() => pick.hidden === false);
+      d.querySelectorAll('#upgOpts button')[0].click();     // «Довгий ствол»
+      check('обрана гілка застосувалась', await until(() => tw.lvl === 2 && tw.up[0] === 'barrel'),
+            tw.lvl + ' / ' + tw.up.join(','));
+      check('ствол справді додав дальності', tw.st.range > before.range,
+            before.range + ' → ' + tw.st.range);
+      check('за дальність заплачено шкодою', tw.st.dmg < before.dmg * 2.1,
+            before.dmg + ' → ' + tw.st.dmg);
+      check('третій рівень пропонує вже інше',
+            sim.upChoices(tw).map(p => p.key).join() === 'scope,rapid',
+            sim.upChoices(tw).map(p => p.key).join());
+    }
   }
 
   /* 0б. Гість щойно приєднався: номер гравця вже 1, а симуляція ще

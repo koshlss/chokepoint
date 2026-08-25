@@ -225,6 +225,26 @@ canvas{display:block; width:100%; height:auto; touch-action:none; cursor:crossha
 .towerTip b{font-family:var(--display); font-size:13.5px; letter-spacing:.03em}
 .towerTip i{font-style:normal; color:var(--text-faint); margin-left:6px; font-size:11px}
 .towerTip u{text-decoration:none; color:var(--brass); font-family:var(--mono); font-size:11.5px}
+/* Вибір гілки прокачки. Дві рівноправні картки поруч — саме тому вони
+   однакової ширини й без «рекомендованої»: пропозиції рівні за силою,
+   різні за характером, і підказувати тут нема чого. */
+.upgPick{position:absolute; z-index:6; background:var(--ink-2);
+  border:1px solid var(--brass-dim); border-radius:var(--r);
+  padding:9px 10px; box-shadow:0 10px 30px rgba(0,0,0,.6); width:330px; max-width:92%}
+.upgPick .head{display:flex; align-items:baseline; justify-content:space-between; gap:8px;
+  margin-bottom:8px}
+.upgPick .head b{font-family:var(--display); font-size:13px; letter-spacing:.05em; color:var(--text)}
+.upgPick .head span{font-family:var(--mono); font-size:12px; color:var(--brass)}
+.upgPick .opts{display:grid; grid-template-columns:1fr 1fr; gap:7px}
+.upgPick .opts button{display:block; width:100%; text-align:left; padding:8px 9px;
+  text-transform:none; letter-spacing:0; font-family:var(--display); font-size:12.5px;
+  background:var(--panel); border-color:var(--line)}
+.upgPick .opts button:hover{background:var(--panel-hi); border-color:var(--brass-dim)}
+.upgPick .opts button i{display:block; margin-top:4px; font-style:normal; font-size:11px;
+  line-height:1.45; color:var(--text-faint); font-family:inherit}
+.upgPick .foot{margin-top:7px; font-family:var(--display); font-size:10px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--text-faint)}
+
 .toggle{display:flex; align-items:center; gap:5px; font-family:var(--display); font-size:11px;
   letter-spacing:.1em; text-transform:uppercase; color:var(--text-dim); cursor:pointer}
 

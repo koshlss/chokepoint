@@ -156,7 +156,12 @@ export function runOne(mapIdx: number, mode: number, seed: string, opts: RunOpts
         }
         if (bt) {
           const c = sim.upgradeCost(bt);
-          sim.apply({ t:'up', p:0, seq:0, x:bt.x, y:bt.y });
+          /* Гілку бот бере за положенням вежі — детерміновано й так, щоб
+             у прогоні траплялись обидві. Без ключа прокачка тепер просто
+             відхиляється, і стенд мовчки міряв би гру без прокачки. */
+          const opts = sim.upChoices(bt);
+          const pick = opts.length ? opts[(bt.x + bt.y) % opts.length].key : '';
+          sim.apply({ t:'up', p:0, seq:0, x:bt.x, y:bt.y, k:pick });
           spentTotal += c; placed++; didUp = true;
         }
       }

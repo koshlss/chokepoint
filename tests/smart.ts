@@ -198,7 +198,13 @@ export function runSmart(mapIdx: number, mode: number, seed: string, opts: Smart
         const m = bestMove();
         if (!m) break;
         const before = sim.towers.length;
-        if (m.kind === 'up') sim.apply({ t: 'up', p: 0, seq: 0, x: m.x, y: m.y });
+        if (m.kind === 'up') {
+          // гілку беремо детерміновано за клітиною — див. коментар у bot.ts
+          const tw = sim.towerAt(m.x, m.y);
+          const opts = tw ? sim.upChoices(tw) : [];
+          const pick = opts.length ? opts[(m.x + m.y) % opts.length].key : '';
+          sim.apply({ t: 'up', p: 0, seq: 0, x: m.x, y: m.y, k: pick });
+        }
         else {
           sim.apply({ t: 'build', p: 0, seq: 0, x: m.x, y: m.y, k: m.k });
           if (sim.towers.length === before) break;   // не вийшло — не циклимось

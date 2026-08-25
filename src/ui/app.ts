@@ -1,4 +1,5 @@
 import Peer from 'peerjs';
+import { perkOf } from '../content/upgrades';
 import { TPS, SUB, GW, GH, idx, MODE_MAZE, MODE_FIXED } from '../sim/constants';
 import { Sim } from '../sim/sim';
 import { MAPS } from '../content/maps';
@@ -87,6 +88,7 @@ const el = {
   webhookUrl: byId<HTMLInputElement>('webhookUrl'), webhookTest: byId<HTMLButtonElement>('btnWebhookTest'),
   webhookHint: byId('webhookHint'), downloadLog: byId<HTMLButtonElement>('btnDownloadLog'),
   duelField: byId('duelField'), duel: byId<HTMLSelectElement>('duelToggle'),
+  upgPick: byId('upgPick'), upgTitle: byId('upgTitle'), upgCost: byId('upgCost'), upgOpts: byId('upgOpts'),
   mateBoard: byId('mateBoard'),
   mbWave: byId('mbWave'), mbLives: byId('mbLives'), mbGold: byId('mbGold'),
   myName: byId<HTMLInputElement>('myName'), mySwatches: byId('mySwatches'),
@@ -435,7 +437,7 @@ function drawRail() {
   el.rail.appendChild(sep);
 
   const extras: { id: CursorMode; key: string; cls: string; name: string; hint: string; sub: string; mark: string }[] = [
-    { id:'up',   key:'U', cls:'', name:'Прокачати', hint:'Сильніша башта на тому самому місці.', sub:'ціна росте з рівнем', mark:'▲' },
+    { id:'up',   key:'U', cls:'', name:'Прокачати', hint:'Сильніша башта на тому самому місці. Дорогі вежі ще й питають, ким їм стати.', sub:'ціна росте з рівнем', mark:'▲' },
     { id:'aim',  key:'T', cls:'', name:'Ціль',      hint:'Перший / останній / міцний / слабкий.', sub:'клац по башті — наступний режим', mark:'◎' },
     { id:'raze', key:'0', cls:'raze', name:'Знести', hint:'Вкладене до межі хвилі — усе назад.', sub:'старіше вже 70%', mark:'↩' },
   ];
@@ -551,8 +553,13 @@ function showTowerTip(cx: number, cy: number) {
         (rangeShown() ? ` · радіус ${(t.st.range / SUB).toFixed(1)}` : ''),
       `ціль: ${AIMS[t.aim]}`,
     ];
+    // обраний шлях — інакше через десять хвилин не згадаєш, чим ця вежа
+    // відрізняється від такої самої сусідньої
+    const taken = t.up.map((k: string) => perkOf(b, k)).filter(Boolean);
+    if (taken.length) rows.push(taken.map((p: any) => escapeHtml(p.name)).join(' · '));
     if (t.build > 0) rows.push('<u>будується…</u>');
-    else if (t.lvl < MAX_LVL) rows.push(`<u>прокачка ${sim.upgradeCost(t)}</u>`);
+    else if (t.lvl < MAX_LVL) rows.push(`<u>прокачка ${sim.upgradeCost(t)}</u>` +
+      (sim.upChoices(t).length ? ' <i>вибір</i>' : ''));
     rows.push(`<u>знести → ${sim.refund(t)}</u>`);
     el.towerTip.innerHTML = rows.join('<br>');
     el.towerTip.hidden = false;
@@ -568,12 +575,52 @@ function showTowerTip(cx: number, cy: number) {
   el.towerTip.style.left = Math.max(0, x) + 'px';
   el.towerTip.style.top  = Math.max(0, y) + 'px';
 }
+/* ── вибір гілки прокачки ─────────────────────────────────────────────
+   Прокачка більше не одна кнопка: на рівні 2 (а в простих веж — на 3)
+   вежа питає, ким їй стати, і другий вибір залежить від першого. Там,
+   де вибору немає, клік качає одразу — зайве вікно на порожньому місці
+   тільки заважало б. */
+let upgAt: { x: number; y: number } | null = null;
+function askUpgrade(x: number, y: number) {
+  closeUpgrade();
+  const t = sim && sim.towerAt(x, y);
+  if (!t) return;
+  const opts = sim.upChoices(t);
+  if (!opts.length) { enqueue({ t:'up', x, y, k:'' }); return; }
+
+  const b = TOOL_BY_KEY[t.k];
+  upgAt = { x, y };
+  el.upgTitle.textContent = b.name + ' → рівень ' + (t.lvl + 1);
+  el.upgCost.textContent = sim.upgradeCost(t) + ' зол.';
+  el.upgOpts.innerHTML = opts.map(o =>
+    '<button type="button" data-perk="' + escapeHtml(o.key) + '">' +
+    escapeHtml(o.name) + '<i>' + escapeHtml(o.blurb) + '</i></button>').join('');
+  el.upgOpts.querySelectorAll<HTMLButtonElement>('button').forEach(btn => {
+    btn.onclick = () => {
+      if (upgAt) enqueue({ t:'up', x:upgAt.x, y:upgAt.y, k:btn.dataset.perk });
+      closeUpgrade();
+    };
+  });
+  el.upgPick.hidden = false;
+
+  // тримаємо вікно в межах дошки, як і підказку
+  const box = boardRect();
+  const w = el.upgPick.offsetWidth, h = el.upgPick.offsetHeight;
+  const cell = box.width / GW;
+  let px = (x + 1) * cell + 8, py = y * cell;
+  if (px + w > box.width)  px = x * cell - w - 8;
+  if (py + h > box.height) py = box.height - h;
+  el.upgPick.style.left = Math.max(0, px) + 'px';
+  el.upgPick.style.top  = Math.max(0, py) + 'px';
+}
+function closeUpgrade() { upgAt = null; el.upgPick.hidden = true; }
+
 cv.addEventListener('contextmenu', e => { e.preventDefault(); const [x, y] = tileAt(e); enqueue({ t:'raze', x, y }); });
 cv.addEventListener('mousedown', e => {
   if (e.button !== 0) return;
   const [x, y] = tileAt(e);
   if (tool === 'raze') enqueue({ t:'raze', x, y });
-  else if (tool === 'up') enqueue({ t:'up', x, y });
+  else if (tool === 'up') askUpgrade(x, y);
   else if (tool === 'aim') enqueue({ t:'aim', x, y });
   else enqueue({ t:'build', x, y, k:tool.key });
 });
@@ -586,7 +633,13 @@ addEventListener('keydown', e => {
   else if (k === '0') { tool = 'raze'; refreshRail(); }
   else if (k === 'u') { tool = 'up'; refreshRail(); }
   else if (k === 't') { tool = 'aim'; refreshRail(); }
-  else if (k === 'escape') { const t = myTools().find(x => x.shot); if (t) { tool = t; refreshRail(); } }
+  /* Esc робить ОДНУ дію за раз: якщо відкрито вибір гілки — закриває
+     його й лишає інструмент у руці. Інакше скасування вибору мовчки
+     міняло б ще й інструмент, і наступний клік ставив би вежу. */
+  else if (k === 'escape') {
+    if (upgAt) { closeUpgrade(); return; }
+    const t = myTools().find(x => x.shot); if (t) { tool = t; refreshRail(); }
+  }
   else if (k === ' ') { e.preventDefault(); togglePause(); }
   else if (k === 'f') cycleSpeed();
   else if (k === 'n') enqueue({ t:'wave' });
@@ -1384,6 +1437,9 @@ let diagIn = 0;
 function hud() {
   const solo = net.solo;
   syncPanels();
+  /* Вікно вибору закривається саме, щойно втрачає сенс: гравець узяв
+     інший інструмент, або вежу вже знесли (у коопі — напарником). */
+  if (upgAt && (tool !== 'up' || !sim.towerAt(upgAt.x, upgAt.y))) closeUpgrade();
   if (solo) {
     const p = sim.players[0];
     setText(el.kills,  p.kills);
