@@ -59,10 +59,27 @@ function bestSpot(sim: any, tool: Tool, path: number[], scratch: Int32Array): nu
   let best = -1, bestScore = 0;
 
   if (sim.mode === MODE_FIXED) {
+    /* Нічиї ламаємо відстанню до ВЛАСНОГО кута, а не порядком обходу.
+       Це не косметика: на дзеркальній мапі «перша за обходом» клітина у
+       верхній половині й у нижній — не дзеркальні одна одній, тож на
+       кожній нічиїй половини розходились. Далі розбіжність наростала
+       сама (більше покриття → більше вбивств → більше золота), і стенд
+       показував перекіс 113/313 там, де сама гра чесна: дві дзеркальні
+       вежі дають рівно 3/3. */
+    /* Лише на мапах із половинами. На звичайних ділити нічиї відстанню
+       нема потреби, а перемірювати через це весь наявний баланс — тим
+       паче: інструмент має мінятись тільки там, де він бреше. */
+    const mirrored = !!(sim.map.zones && sim.map.zones.length > 1);
+    const home = mirrored ? sim.routes[ZONE_P][0] : 0;
+    const hx = home % GW, hy = (home / GW) | 0;
+    let bestD = Infinity;
     for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
       if (!sim.buildable(x, y) || !sim.inZone(ZONE_P, x, y)) continue;   // чужа половина закрита
       const s = cover(sim, x, y, tool, path);
-      if (s > bestScore) { bestScore = s; best = idx(x, y); }
+      if (!mirrored) { if (s > bestScore) { bestScore = s; best = idx(x, y); } continue; }
+      if (s < bestScore) continue;
+      const d = (x - hx) * (x - hx) + (y - hy) * (y - hy);
+      if (s > bestScore || d < bestD) { bestScore = s; bestD = d; best = idx(x, y); }
     }
     return best;
   }

@@ -5,6 +5,9 @@ import { it, afterAll } from 'vitest';
 import { writeFileSync } from 'node:fs';
 import { runOne, mixFor, type RunResult } from '../tests/bot';
 import { MAPS } from '../src/content/maps';
+/* Кільцеві мапи сюди не входять: вони на двох, і один бот міряв би на них
+   порожню половину дошки. У них свій стенд — bench/ring.test.ts. */
+const SOLO_MAPS = MAPS.map((m, i) => ({ m, i })).filter(x => !x.m.roads);
 import { MODE_MAZE, MODE_FIXED } from '../src/sim/constants';
 import { COMBOS, toolsOf } from '../src/content/loadouts';
 
@@ -39,7 +42,7 @@ afterAll(() => {
 it(`баланс: ${RUNS} забігів до хвилі ${MAX}`, () => {
   for (const mode of [MODE_FIXED, MODE_MAZE]) {
     const rows: [string, ReturnType<typeof stats>][] = [];
-    for (let map = 0; map < MAPS.length; map++) {
+    for (const { m: _m, i: map } of SOLO_MAPS) {
       const rs = Array.from({ length: RUNS }, (_, i) => runOne(map, mode, 'BENCH-' + i, { maxWave: MAX }));
       rows.push([MAPS[map].name, stats(rs)]);
     }
@@ -56,7 +59,7 @@ it('баланс комбінацій', () => {
       const mix = mixFor(toolsOf(c.primary.key, c.support.key));
       if (!mix.length) continue;
       const rs: RunResult[] = [];
-      for (let map = 0; map < MAPS.length; map++) {
+      for (const { m: _m, i: map } of SOLO_MAPS) {
         const per: RunResult[] = [];
         for (let i = 0; i < RUNS; i++)
           per.push(runOne(map, mode, 'BENCH-' + i, { maxWave: MAX, mix }));
