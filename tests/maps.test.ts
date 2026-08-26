@@ -23,20 +23,36 @@ describe('мапи', () => {
       }
   });
 
+  /* Кільцеві мапи міряються окремо. У них не одна траса, а по одній на
+     кут, поле road — лише замкнене коло для сумісності, і грають на них
+     удвох: довше коло там не піддавка, а інша задача. */
+  const plain = MAPS.filter(m => !m.roads);
+  const rings = MAPS.filter(m => m.roads);
+
   it('вхід і вихід на протилежних кінцях маршруту, і він не порожній', () => {
-    for (const m of MAPS) {
-      const r = buildRoute(m);
-      expect(r.length, m.name).toBeGreaterThan(40);
-      expect(r[0], m.name).not.toBe(r[r.length - 1]);
-    }
+    const each = (name: string, road: any) => {
+      const r = buildRoute({ road } as any);
+      expect(r.length, name).toBeGreaterThan(40);
+      expect(r[0], name).not.toBe(r[r.length - 1]);
+    };
+    for (const m of plain) each(m.name, m.road);
+    for (const m of rings) for (const road of m.roads!) each(m.name, road);
   });
 
   it('довжина в тій самій смузі, що й у перших трьох', () => {
     // довжина прямо задає, скільки крип під вогнем: мапа вдвічі довша
     // була б просто легкою, а не іншою
-    const len = MAPS.map(m => buildRoute(m).length - 1);
+    const len = plain.map(m => buildRoute(m).length - 1);
     const lo = Math.min(...len), hi = Math.max(...len);
-    expect(hi / lo, MAPS.map((m, i) => `${m.name} ${len[i]}`).join(', ')).toBeLessThan(1.35);
+    expect(hi / lo, plain.map((m, i) => `${m.name} ${len[i]}`).join(', ')).toBeLessThan(1.35);
+  });
+
+  it('на кільцевих мапах усі кути мають маршрут однакової довжини', () => {
+    // інакше один гравець мав би довшу дорогу, і порівнювати нема з чим
+    for (const m of rings) {
+      const len = m.roads!.map(r => buildRoute({ road: r } as any).length);
+      expect(new Set(len).size, `${m.name}: ${len.join(' проти ')}`).toBe(1);
+    }
   });
 
   it('скелі не з’їдають траси й лишають де будувати', () => {

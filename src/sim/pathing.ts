@@ -14,16 +14,26 @@ function buildRoute(map) {
   return r;
 }
 
+/* Маршрутів може бути кілька — по одному на кут гравця (кільцеві мапи).
+   Звичайна мапа — окремий випадок із одним. */
+function buildRoutes(map) {
+  return (map.roads && map.roads.length)
+    ? map.roads.map(r => buildRoute({ road: r }))
+    : [buildRoute(map)];
+}
+
 // 0 — вільно, 1 — скеля, 2 — траса
-function buildTerrain(map, route) {
+function buildTerrain(map, routes) {
   const t = new Uint8Array(GW * GH);
   for (const r of map.rocks)
     for (let y = r[1]; y < r[1] + r[3]; y++)
       for (let x = r[0]; x < r[0] + r[2]; x++)
         if (x >= 0 && y >= 0 && x < GW && y < GH) t[idx(x, y)] = 1;
-  for (const i of route) t[i] = 2;      // траса перекриває скелі
+  // траса перекриває скелі; кілька трас накладаються одна на одну
+  const list = Array.isArray(routes[0]) ? routes : [routes];
+  for (const route of list) for (const i of route) t[i] = 2;
   return t;
 }
 
 
-export { buildRoute, buildTerrain };
+export { buildRoute, buildRoutes, buildTerrain };

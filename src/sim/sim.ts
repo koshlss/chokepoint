@@ -1,7 +1,7 @@
 import { TPS, SUB, GW, GH, idx, MODE_MAZE, MODE_FIXED } from './constants';
 import { BALANCE } from './balance';
 import { isqrt, seedFrom } from './math';
-import { buildRoute, buildTerrain } from './pathing';
+import { buildRoute, buildRoutes, buildTerrain } from './pathing';
 import { MAPS } from '../content/maps';
 import { TOOL_BY_KEY, UPG, MAX_LVL, AIMS } from '../content/towers';
 import { ARMOR, waveSpec } from '../content/waves';
@@ -38,6 +38,7 @@ class Sim {
   queue: any;
   rng: any;
   route: any;
+  routes: any;
   seedStr: any;
   shots: any;
   spawnCd: any;
@@ -68,8 +69,12 @@ class Sim {
     this.mapIdx  = mapIdx | 0;
     this.mode    = mode | 0;
     this.map     = MAPS[this.mapIdx] || MAPS[0];
-    this.route   = buildRoute(this.map);
-    this.terrain = buildTerrain(this.map, this.route);
+    /* Маршрутів може бути кілька — по одному на кут гравця (Кільце).
+       route лишається першим із них: за ним міряються довжина й покриття,
+       а на звичайних мапах він і є єдиним. */
+    this.routes  = buildRoutes(this.map);
+    this.route   = this.routes[0];
+    this.terrain = buildTerrain(this.map, this.routes);
     const s = this.route[0], g = this.route[this.route.length - 1];
     this.sx = s % GW; this.sy = (s / GW) | 0;
     this.gx = g % GW; this.gy = (g / GW) | 0;
@@ -114,11 +119,11 @@ class Sim {
     const R = TOOL_BY_KEY.mortar.range, R2 = R * R;
     const scores = [];
     for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
-      if (!this.buildable(x, y)) continue;
+      if (!this.buildable(x, y) || !this.inAnyZone(x, y)) continue;
       const cx = x * SUB + (SUB >> 1), cy = y * SUB + (SUB >> 1);
       let s = 0;
-      for (let k = 0; k < this.route.length; k++) {
-        const p = this.route[k];
+      for (const rt of this.routes) for (let k = 0; k < rt.length; k++) {
+        const p = rt[k];
         const dx = (p % GW) * SUB + (SUB >> 1) - cx;
         const dy = ((p / GW) | 0) * SUB + (SUB >> 1) - cy;
         if (dx * dx + dy * dy <= R2) s++;
@@ -128,7 +133,15 @@ class Sim {
     scores.sort((a, b) => b - a);
     let sum = 0;
     for (let i = 0; i < BALANCE.covTop && i < scores.length; i++) sum += scores[i];
-    return sum || 1;
+    /* Ділимо на кількість трас. Покриття має міряти, яку частину дороги
+       ОДНОГО крипа накриває дошка, а крипи розподіляються по кутах порівну.
+       Без поділу спільне коло рахувалось двічі, і на Кільці крипи виходили
+       вдвічі міцнішими, ніж дошка здатна побити. */
+    /* covMult — знятий прогоном множник для кільцевих мап: там і крипів,
+       і веж удвічі більше, і жодне з двох крайніх припущень (сумувати
+       траси чи усереднювати) не дало паритету зі звичайними мапами. */
+    const mult = this.map.covMult || 1;
+    return (((sum * mult) / this.routes.length) | 0) || 1;
   }
 
   /* ── PRNG: mulberry32 на цілих ── */
@@ -197,7 +210,7 @@ class Sim {
      режимі це залишок маршруту, бо на перехресті відстань по полю
      збрехала б. */
   progress(c) {
-    if (this.mode === MODE_FIXED) return this.route.length - 1 - c.ri;
+    if (this.mode === MODE_FIXED) return this.routeOf(c).length - 1 - c.ri;
     const d = this.flow[idx(c.tx, c.ty)];
     return d < 0 ? (1 << 29) : d;
   }
@@ -247,13 +260,40 @@ class Sim {
     return a ? a.has(key) : true;
   }
 
+  /* Кут гравця. На звичайних мапах кутів немає — там будують де завгодно,
+     тож перевірка мовчки пропускає всіх. */
+  zoneOf(p) {
+    const z = this.map.zones;
+    return (z && z.length) ? z[p % z.length] : null;
+  }
+  inZone(p, x, y) {
+    const z = this.zoneOf(p);
+    if (!z) return true;
+    return x >= z[0] && y >= z[1] && x < z[0] + z[2] && y < z[1] + z[3];
+  }
+  /* Чи дістанеться ця клітина комусь узагалі. Кути без гравця не працюють:
+     удвох на кільці зайняті обидва, соло — лише один. Це й треба знати
+     покриттю, інакше воно приписує гравцю чужу половину дошки, і крипи
+     виходять удвічі міцнішими, ніж він здатен побити. */
+  inAnyZone(x, y) {
+    const z = this.map.zones;
+    if (!z || !z.length) return true;
+    const n = Math.min(this.nPlayers, z.length);
+    for (let p = 0; p < n; p++) if (this.inZone(p, x, y)) return true;
+    return false;
+  }
+
   buildable(x, y) {
     if (x < 0 || y < 0 || x >= GW || y >= GH) return false;
     const i = idx(x, y);
     if (this.terrain[i] === 1) return false;                             // скеля
     if (this.mode === MODE_FIXED && this.terrain[i] === 2) return false; // дорога
-    if (x === this.sx && y === this.sy) return false;
-    if (x === this.gx && y === this.gy) return false;
+    // вхід і вихід кожної траси: на кільцевих мапах їх кілька
+    for (const rt of this.routes) {
+      const s0 = rt[0], g0 = rt[rt.length - 1];
+      if (x === s0 % GW && y === (s0 / GW | 0)) return false;
+      if (x === g0 % GW && y === (g0 / GW | 0)) return false;
+    }
     return this.blocked[i] === 0;
   }
 
@@ -267,6 +307,7 @@ class Sim {
     if (cmd.t === 'build') {
       const tool = TOOL_BY_KEY[cmd.k];
       if (!tool || !this.buildable(cmd.x, cmd.y)) { this.events.push({ e:'deny', p:cmd.p, why:'зайнято' }); return; }
+      if (!this.inZone(cmd.p, cmd.x, cmd.y)) { this.events.push({ e:'deny', p:cmd.p, why:'не твій кут' }); return; }
       if (!this.allows(cmd.p, cmd.k)) {
         // причину розрізняємо, бо це різні поради гравцю: одне — «не твоя
         // фракція», інше — «ще зарано, чекай хвилі»
@@ -376,15 +417,25 @@ class Sim {
     const s = waveSpec(this.wave);
     this.spec  = s;
     this.queue = [];
-    for (let i = 0; i < s.n; i++) this.queue.push(s);
+    /* Кожен кут шле СВОЮ хвилю. Інакше двоє гравців ставили б удвічі
+       більше веж проти тієї самої купки крипів, і мапа на двох виходила б
+       удвічі легшою за мапу на одного. */
+    const lanes = this.activeRoutes();
+    for (let i = 0; i < s.n * lanes; i++) this.queue.push(s);
     // бос іде не сам: інакше вся хвиля — одна ціль, і мортира марна
-    if (s.esc) for (let i = 0; i < s.esc.n; i++) this.queue.push(s.esc);
+    if (s.esc) for (let i = 0; i < s.esc.n * lanes; i++) this.queue.push(s.esc);
     this.toSpawn  = this.queue.length;
     this.spawnGap = this.queue.length > 4 ? 14 : 40;
     this.spawnCd  = 0;
     this.phase    = 1;
     this.events.push({ e:'wave', n:this.wave, kind:s.kind, esc:!!s.esc });
   }
+
+  /** Траса самого крипа. На звичайних мапах вона одна на всіх. */
+  routeOf(c) { return this.routes[c.rt | 0] || this.route; }
+
+  /** Скільки кутів працює: по одному на гравця, але не більше, ніж мапа має. */
+  activeRoutes() { return Math.min(this.nPlayers, this.routes.length); }
 
   spawnOne() {
     const s = this.queue.shift();
@@ -393,18 +444,24 @@ class Sim {
        обидва, слабша мапа давала б і менше веж, і виграшу не було б. */
     const hp   = (((((s.hp * this.diff) / 100) | 0) * this.cov) / BALANCE.refCoverage) | 0;
     const gold = (((s.gold * BALANCE.killCut) / 100) | 0) || 1;
+    /* На кільцевих мапах крипи виходять по черзі з КОЖНОГО кута — саме
+       тому повз вежі кожного гравця проходять усі. Черга йде за
+       порядковим номером крипа, тож вона однакова в усіх клієнтів. */
+    const rt = this.activeRoutes() > 1 ? (this.nextCreepId - 1) % this.activeRoutes() : 0;
+    const route = this.routes[rt];
+    const sx = route[0] % GW, sy = (route[0] / GW) | 0;
     const c = {
-      id: this.nextCreepId++, ri: 0,
-      tx: this.sx, ty: this.sy, ntx: this.sx, nty: this.sy,
-      x: this.sx * SUB + (SUB >> 1), y: this.sy * SUB + (SUB >> 1),
-      px: this.sx * SUB + (SUB >> 1), py: this.sy * SUB + (SUB >> 1),
+      id: this.nextCreepId++, ri: 0, rt,
+      tx: sx, ty: sy, ntx: sx, nty: sy,
+      x: sx * SUB + (SUB >> 1), y: sy * SUB + (SUB >> 1),
+      px: sx * SUB + (SUB >> 1), py: sy * SUB + (SUB >> 1),
       hp, maxHp: hp, sp: s.sp, kind: s.kind, gold,
       slowT: 0, slowP: 0, slowImm: 0, vulnT: 0, vulnP: 0, dotT: 0, dotD: 0, dotCd: 0, dotMax: 0, dotBy: -1, hurt: 0,
     };
     this.creeps.push(c);
     const n = this.mode === MODE_FIXED
-      ? (this.route.length > 1 ? this.route[1] : -1)
-      : this.stepTile(this.sx, this.sy, this.flow);
+      ? (route.length > 1 ? route[1] : -1)
+      : this.stepTile(sx, sy, this.flow);
     if (n >= 0) { c.ntx = n % GW; c.nty = (n / GW) | 0; }
   }
 
@@ -490,8 +547,9 @@ class Sim {
           c.tx = c.ntx; c.ty = c.nty;
           if (this.mode === MODE_FIXED) {
             c.ri++;                                       // крок уперед по маршруту
-            if (c.ri >= this.route.length - 1) { arrived = true; break; }
-            const n = this.route[c.ri + 1];
+            const rt = this.routeOf(c);
+            if (c.ri >= rt.length - 1) { arrived = true; break; }
+            const n = rt[c.ri + 1];
             c.ntx = n % GW; c.nty = (n / GW) | 0;
             continue;
           }

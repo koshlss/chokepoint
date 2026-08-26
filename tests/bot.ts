@@ -17,7 +17,9 @@ import type { Tool } from '../src/content/types';
 function pathTiles(sim: any): number[] {
   if (sim.mode === MODE_FIXED) {
     const seen = new Set<number>(), out: number[] = [];
-    for (const i of sim.route) if (!seen.has(i)) { seen.add(i); out.push(i); }
+    // на кільцевих мапах трас кілька — бот має бачити всі
+    for (const rt of (sim.routes || [sim.route]))
+      for (const i of rt) if (!seen.has(i)) { seen.add(i); out.push(i); }
     return out;
   }
   const out: number[] = [];
@@ -45,6 +47,11 @@ function cover(sim: any, x: number, y: number, tool: Tool, path: number[]): numb
   return s;
 }
 
+/* Чию половину зараз обираємо. На кільцевих мапах гравець будує лише
+   у своїй, тож і шукати місце треба тільки там — інакше бот віддавав би
+   найкращі клітини сусідові, а сам лишався без веж. */
+let ZONE_P = 0;
+
 /* Фіксований режим: просто максимум покриття.
    Лабіринт: ще й подовження шляху — інакше бот не мазить і це не перевірка
    режиму, а перевірка невміння. */
@@ -53,7 +60,7 @@ function bestSpot(sim: any, tool: Tool, path: number[], scratch: Int32Array): nu
 
   if (sim.mode === MODE_FIXED) {
     for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
-      if (!sim.buildable(x, y)) continue;
+      if (!sim.buildable(x, y) || !sim.inZone(ZONE_P, x, y)) continue;   // чужа половина закрита
       const s = cover(sim, x, y, tool, path);
       if (s > bestScore) { bestScore = s; best = idx(x, y); }
     }
@@ -71,7 +78,7 @@ function bestSpot(sim: any, tool: Tool, path: number[], scratch: Int32Array): nu
   const base = sim.pathLength();
   for (const i of near) {
     const x = i % GW, y = (i / GW) | 0;
-    if (!sim.buildable(x, y)) continue;
+    if (!sim.buildable(x, y) || !sim.inZone(ZONE_P, x, y)) continue;   // чужа половина закрита
     sim.blocked[i] = 1;
     const f = sim.recomputeFlow(scratch);
     const len = f[idx(sim.sx, sim.sy)];
@@ -201,5 +208,90 @@ export function runOne(mapIdx: number, mode: number, seed: string, opts: RunOpts
     spent: spentTotal,
     leaks: leaksByWave,
     ticks: sim.tick,
+  };
+}
+
+/* ── двоє за одну дошку ───────────────────────────────────────────────
+   Кільцева мапа не має сенсу на одному боті: половина дошки просто стоїть
+   порожня, і стенд міряє не мапу, а те, що грає один. Тут двоє грають
+   одночасно, кожен у своїй половині й СВОЇМ набором — саме так, як вона
+   й задумана. Життя спільні, золото в кожного своє. */
+export interface DuoOpts {
+  maxWave?: number;
+  diff?: number;
+  /** По міксу на гравця. */
+  mixes: string[][];
+  /** По арсеналу на гравця; без нього дозволено все. */
+  arsenals?: string[][];
+}
+export interface DuoResult {
+  wave: number; died: boolean; lives: number; ticks: number;
+  towers: number[]; gold: number[]; kills: number[]; dmg: number[];
+}
+
+export function runDuo(mapIdx: number, mode: number, seed: string, opts: DuoOpts): DuoResult {
+  const { maxWave = 22, diff = 100, mixes, arsenals } = opts;
+  const n = mixes.length;
+  const sim: any = new Sim(seed, diff, n, mapIdx, mode, arsenals);
+  const scratch = new Int32Array(GW * GH);
+  const placed = new Array(n).fill(0);
+
+  for (let t = 0; t < 120000 && !sim.over && sim.wave <= maxWave; t++) {
+    if (sim.phase === 0 && (t % 12 === 0)) {
+      const path = pathTiles(sim);
+      for (let p = 0; p < n; p++) {
+        ZONE_P = p;                       // шукаємо місце лише у своїй половині
+        const mix = mixes[p];
+        const pick = (k: number) => TOOL_BY_KEY[mix[k % mix.length]];
+
+        // кожна третя дія — прокачка, як і в одиночному боті
+        let didUp = false;
+        if (placed[p] > 0 && placed[p] % 3 === 0) {
+          let bt: any = null, bs = -1;
+          for (const tw of sim.towers) {
+            if (tw.owner !== p || tw.lvl >= MAX_LVL || !tw.st.cd) continue;
+            const c = sim.upgradeCost(tw);
+            if (c < 0 || sim.players[p].gold < c) continue;
+            const s = cover(sim, tw.x, tw.y, TOOL_BY_KEY[tw.k], path);
+            if (s > bs) { bs = s; bt = tw; }
+          }
+          if (bt) {
+            const ch = sim.upChoices(bt);
+            sim.apply({ t:'up', p, seq:0, x:bt.x, y:bt.y,
+                        k: ch.length ? ch[(bt.x + bt.y) % ch.length].key : '' });
+            placed[p]++; didUp = true;
+          }
+        }
+
+        if (!didUp) {
+          let tool = pick(placed[p]);
+          for (let k = 0; k < mix.length && (!tool || !sim.allows(p, tool.key)); k++)
+            tool = pick(placed[p] + k + 1);
+          if (tool && sim.allows(p, tool.key) && sim.players[p].gold >= tool.cost) {
+            const spot = bestSpot(sim, tool, path, scratch);
+            if (spot >= 0) {
+              const before = sim.towers.length;
+              sim.apply({ t:'build', p, seq:0, x:spot % GW, y:(spot / GW) | 0, k:tool.key });
+              if (sim.towers.length > before) placed[p]++;
+            }
+          }
+        }
+      }
+      ZONE_P = 0;
+    }
+    // хвилю кличуть обидва: інакше голосування ніколи не збереться
+    sim.step(null);
+  }
+
+  const per = (f: (i: number) => number) => Array.from({ length: n }, (_, i) => f(i));
+  return {
+    wave: sim.over ? sim.wave : Math.min(sim.wave, maxWave),
+    died: sim.over,
+    lives: sim.lives,
+    ticks: sim.tick,
+    towers: per(i => sim.towers.filter((tw: any) => tw.owner === i).length),
+    gold: per(i => sim.players[i].gold),
+    kills: per(i => sim.players[i].kills),
+    dmg: per(i => sim.players[i].dmg),
   };
 }

@@ -116,6 +116,7 @@ MAPS.forEach((m, i) => {
    випадковості не бачить взагалі: у неї приходить готовий номер. У коопі
    мапу все одно задає господар і шле гостю разом із рештою налаштувань. */
 el.mapSel.value = String((Math.random() * MAPS.length) | 0);
+enforceMapMode();   // якщо випало Кільце — режим одразу фіксований
 
 let sim: Sim, ls: Lockstep, simMate: Sim | null = null, mateOverSaid = false, lobbyPreview: any = null, tool: Cursor = TOOLS[1], paused = false, speed = 1;
 let hoverX = -1, hoverY = -1, acc = 0, last = 0;
@@ -737,7 +738,12 @@ function refreshHostLocks() {
   const guestSide = !net.solo && net.me !== 0;
   const midGame = !net.solo && !inLobby;
   const locked = guestSide || midGame;
-  for (const c of [el.seed, el.diff, el.mapSel, el.modeSel]) c.disabled = locked;
+  for (const c of [el.seed, el.diff, el.mapSel]) c.disabled = locked;
+  /* Замок режиму має рівно двох господарів: лобі та сама мапа. Доти
+     enforceMapMode() домальовував заборону поверх, і після Кільця режим
+     лишався замкненим назавжди. */
+  enforceMapMode();
+  el.modeSel.disabled = locked || mapFixedOnly();
   /* Фракція — виняток: це вибір КОЖНОГО гравця, тож гостю вона доступна
      нарівні з хостом. Замикає її лише початок бою, як і решту. */
   el.primarySel.disabled = midGame;
@@ -835,7 +841,20 @@ function guestSendReady() {
   net.send({ t:'ready', seq: myCfgSeq, lo: myPrimary, sup: mySupport });
   renderLobby();
 }
+/* Кільцевій мапі лабіринт не потрібен: коло вже намальоване, і будувати
+   його наново нема сенсу. Замість ховати варіант і лишати гравця гадати,
+   просто повертаємо режим назад — вибір мапи важливіший. */
+function mapFixedOnly() {
+  const m = MAPS[parseInt(el.mapSel.value, 10)];
+  return !!(m && m.fixedOnly);
+}
+function enforceMapMode() {
+  if (mapFixedOnly() && parseInt(el.modeSel.value, 10) !== MODE_FIXED)
+    el.modeSel.value = String(MODE_FIXED);
+}
+
 function onHeaderChange() {
+  enforceMapMode();
   updateDuelAvailability();     // зміна режиму могла зробити «сам за себе» недоступним
   if (net.solo) { boot(); return; }
   if (net.me !== 0) return;
@@ -1594,6 +1613,7 @@ function render(alpha) {
 
   // маршрут
   if (el.showPath.checked) drawPath();
+  drawZones();      // кути показуємо завжди: без них не видно, де можна ставити
 
   // мітки
   badge(sim.sx, sim.sy, C('--coral'), 'ВХІД');
@@ -1652,6 +1672,10 @@ const lerp = (a, b, t) => a + (b - a) * t;
 function drawPath() {
   let pts;
   if (sim.mode === MODE_FIXED) {
+    /* На кільцевих мапах трас кілька — по одній на кут. Малюємо всі:
+       коло в них спільне, тож лінії лягають одна на одну, а розходяться
+       лише на з'їзді в центр — і саме це гравцю й треба бачити. */
+    if (sim.routes.length > 1) { for (const rt of sim.routes) drawOnePath(rt); return; }
     // авторський маршрут як є — разом із самоперетинами
     pts = sim.route.map(i => [i % GW, (i / GW) | 0]);
   } else {
@@ -1674,6 +1698,43 @@ function drawPath() {
     i ? ctx.lineTo(cx, cy) : ctx.moveTo(cx, cy);
   });
   ctx.stroke();
+}
+
+function drawOnePath(route: number[]) {
+  ctx.strokeStyle = 'rgba(87,160,190,.34)';
+  ctx.lineWidth = Math.max(2, TS * .17);
+  ctx.lineJoin = ctx.lineCap = 'round';
+  ctx.beginPath();
+  route.forEach((i, k) => {
+    const cx = (i % GW) * TS + TS / 2, cy = ((i / GW) | 0) * TS + TS / 2;
+    k ? ctx.lineTo(cx, cy) : ctx.moveTo(cx, cy);
+  });
+  ctx.stroke();
+}
+
+/* Кути гравців. Без них не видно, де взагалі можна ставити: спроба
+   поставити в чужому куті просто відхилялась би без пояснення. */
+function drawZones() {
+  const zones = sim.map.zones;
+  if (!zones || !zones.length) return;
+  for (let p = 0; p < zones.length; p++) {
+    const [zx, zy, zw, zh] = zones[p];
+    const mine = p === meId();
+    ctx.save();
+    ctx.strokeStyle = C(mine ? '--brass' : '--line');
+    ctx.globalAlpha = mine ? .5 : .25;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 5]);
+    ctx.strokeRect(zx * TS + 1, zy * TS + 1, zw * TS - 2, zh * TS - 2);
+    ctx.restore();
+    if (!mine) {                      // чужий кут ледь притемнюємо
+      ctx.save();
+      ctx.fillStyle = C('--ink');
+      ctx.globalAlpha = .22;
+      ctx.fillRect(zx * TS, zy * TS, zw * TS, zh * TS);
+      ctx.restore();
+    }
+  }
 }
 
 function badge(tx, ty, color, label) {

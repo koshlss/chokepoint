@@ -168,7 +168,7 @@ export function runSmart(mapIdx: number, mode: number, seed: string, opts: Smart
       if (t.cost > gold) continue;
       for (const i of near) {
         const x = i % GW, y = (i / GW) | 0;
-        if (!sim.buildable(x, y)) continue;
+        if (!sim.buildable(x, y) || !sim.inZone(0, x, y)) continue;   // чужий кут закритий
         let c = cover(sim, x, y, t.range);
         if (c <= 0) continue;
         if (mode !== MODE_FIXED) {
