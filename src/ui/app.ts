@@ -576,9 +576,9 @@ function showTowerTip(cx: number, cy: number) {
     const taken = t.up.map((k: string) => perkOf(b, k)).filter(Boolean);
     if (taken.length) rows.push(taken.map((p: any) => escapeHtml(p.name)).join(' · '));
     if (t.build > 0) rows.push('<u>будується…</u>');
-    else if (t.lvl < MAX_LVL) rows.push(`<u>прокачка ${sim.upgradeCost(t)}</u>` +
+    else if (t.lvl < MAX_LVL) rows.push(`<u>прокачка ${fmt(sim.upgradeCost(t))}</u>` +
       (sim.upChoices(t).length ? ' <i>вибір</i>' : ''));
-    rows.push(`<u>знести → ${sim.refund(t)}</u>`);
+    rows.push(`<u>знести → ${fmt(sim.refund(t))}</u>`);
     el.towerTip.innerHTML = rows.join('<br>');
     el.towerTip.hidden = false;
     tipW = el.towerTip.offsetWidth; tipH = el.towerTip.offsetHeight;
@@ -609,7 +609,7 @@ function askUpgrade(x: number, y: number) {
   const b = TOOL_BY_KEY[t.k];
   upgAt = { x, y };
   el.upgTitle.textContent = b.name + ' → рівень ' + (t.lvl + 1);
-  el.upgCost.textContent = sim.upgradeCost(t) + ' зол.';
+  el.upgCost.textContent = fmt(sim.upgradeCost(t)) + ' зол.';
   el.upgOpts.innerHTML = opts.map(o =>
     '<button type="button" data-perk="' + escapeHtml(o.key) + '">' +
     escapeHtml(o.name) + '<i>' + escapeHtml(o.blurb) + '</i></button>').join('');
@@ -1290,7 +1290,7 @@ function digest() {
     if (e.e === 'wave')       { say('Хвиля ' + e.n + ' — ' + KIND_NAME[e.kind] + (e.esc ? ' із супроводом' : ''), 'note'); sfx('wave'); }
     else if (e.e === 'up')    { if (e.p === meId()) { stats.upgraded++; say('Прокачано до рівня ' + e.lvl, 'good'); sfx('up'); } }
     else if (e.e === 'aim')   { if (e.p === meId()) say('Ціль: ' + AIMS[e.m], 'note'); }
-    else if (e.e === 'clear') { say('Хвилю ' + e.n + ' відбито. +' + e.gold + ' зол.', 'good'); sfx('clear'); }
+    else if (e.e === 'clear') { say('Хвилю ' + e.n + ' відбито. +' + fmt(e.gold) + ' зол.', 'good'); sfx('clear'); }
     else if (e.e === 'leak')  {
       stats.leaks++; say('Прорив! −' + e.dmg + ' життя', 'bad'); sfx('leak');
       fx.push({ t:'ring', x:e.x, y:e.y, life:20, max:20, c:C('--coral') });
@@ -1301,9 +1301,9 @@ function digest() {
       shake = Math.min(14, shake + 7);
       flash = 1;
     }
-    else if (e.e === 'raze')  { if (e.p === meId()) { stats.razed++; say(e.full ? ('Знесено, повернено все: +' + e.gold) : ('Знесено зі штрафом: +' + e.gold), e.full ? 'good' : null); } }
+    else if (e.e === 'raze')  { if (e.p === meId()) { stats.razed++; say(e.full ? ('Знесено, повернено все: +' + fmt(e.gold)) : ('Знесено зі штрафом: +' + fmt(e.gold)), e.full ? 'good' : null); } }
     else if (e.e === 'deny')  { if (e.p === meId()) { stats.denied++; say('Не можна: ' + e.why, 'bad'); sfx('deny'); } }
-    else if (e.e === 'early') say('Достроково. +' + e.gold + ' зол. усім', 'good');
+    else if (e.e === 'early') say('Достроково. +' + fmt(e.gold) + ' зол. усім', 'good');
     else if (e.e === 'vote')  { if (e.of > 1 && e.n < e.of) say('Голос за прискорення: ' + e.n + '/' + e.of, 'note'); }
     else if (e.e === 'lost')  { sfx('lost'); showLost(); }
     /* Вибух малюється кольором ТІЄЇ вежі, що стріляла, і живе довше:
@@ -1317,7 +1317,7 @@ function digest() {
       stats.kills++; sfx('kill');
       fx.push({ t:'spark', x:e.x, y:e.y, life:10, max:10, c:C('--text-faint') });
       // золото за вбивство видно там, де воно сталось, а не лише в лічильнику
-      if (e.p === meId() && e.gold) fx.push({ t:'text', x:e.x, y:e.y, life:34, max:34, c:C('--brass'), s:'+' + e.gold });
+      if (e.p === meId() && e.gold) fx.push({ t:'text', x:e.x, y:e.y, life:34, max:34, c:C('--brass'), s:'+' + fmt(e.gold) });
     }
     else if (e.e === 'build') { if (e.p === meId()) { stats.built++; sfx('build'); } }
   }
@@ -1379,8 +1379,8 @@ function resultHtml() {
   if (rows.length < 2) {
     const r = rows[0];
     return '<div class="score"><div class="sRow"><b>Витримано хвиль</b><u>' + r.wave + '</u></div>' +
-           '<div class="sRow"><b>Вбито</b><u>' + r.kills + '</u></div>' +
-           '<div class="sRow"><b>Шкода</b><u>' + r.dmg + '</u></div></div>';
+           '<div class="sRow"><b>Вбито</b><u>' + fmt(r.kills) + '</u></div>' +
+           '<div class="sRow"><b>Шкода</b><u>' + fmt(r.dmg) + '</u></div></div>';
   }
   /* У дуелі мій бік може впасти першим, а напарник ще грати — тоді
      переможця оголошувати зарано: він щойно обжене мене по хвилі. Тому
@@ -1397,7 +1397,7 @@ function resultHtml() {
     '<div class="sWin">' + head + (tie || pending ? '' : ' <i>' + why + '</i>') + '</div>' +
     '<div class="sHead"><b>гравець</b><u>хвиля</u><u>вбито</u><u>шкода</u><u>внесок</u></div>' +
     sorted.map(r => '<div class="sRow' + (r === win && !tie && !pending ? ' me' : '') + '"><b>' + escapeHtml(r.name) + '</b>' +
-      '<u>' + r.wave + '</u><u>' + r.kills + '</u><u>' + r.dmg + '</u>' +
+      '<u>' + r.wave + '</u><u>' + fmt(r.kills) + '</u><u>' + fmt(r.dmg) + '</u>' +
       '<u>' + Math.round(r.share * 100) + '%</u></div>').join('') +
     '</div>';
 }
@@ -1476,6 +1476,33 @@ function discordPayload(e) {
   }] };
 }
 
+/* ── читабельні числа ─────────────────────────────────────────────────
+   Шкода за партію швидко переростає шість знаків, а суцільне «1284730»
+   око не читає — його треба розбирати. Тому розряди відділяються, а від
+   десяти мільйонів число згортається: точність там уже нікому не
+   потрібна, а от порівняти два числа з одного погляду — потрібно.
+
+   Пробіл нерозривний, інакше число ламається на кінці рядка навпіл. */
+const NBSP = ' ';
+export function fmt(n: number): string {
+  const v = Math.round(n) || 0;
+  if (Math.abs(v) >= 10_000_000) {
+    const m = v / 1_000_000;
+    return (Math.abs(m) >= 1000 ? m.toFixed(0) : m.toFixed(2)) + 'М';
+  }
+  /* Розряди складаємо руками, без регулярки: у ній зворотні скісні надто
+     легко губляться при правках, і вона тихо перетворюється на таку, що
+     не збігається ні з чим. Тут ламатись нема чому. */
+  const sign = v < 0 ? '-' : '';
+  const d = String(Math.abs(v));
+  let out = '';
+  for (let i = 0; i < d.length; i++) {
+    if (i > 0 && (d.length - i) % 3 === 0) out += NBSP;
+    out += d[i];
+  }
+  return sign + out;
+}
+
 function escapeHtml(s) { return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 /* Рядки панелі гравців: у класичному коопі HP спільне (та сама дошка на
@@ -1537,7 +1564,7 @@ function renderRoster() {
   const body = el.rosterBody.children;
   for (let i = 0; i < rows.length && i < body.length; i++) {
     const r = rows[i], u = body[i].querySelectorAll<HTMLElement>('.nums u');
-    const v = [r.kills, r.dmg, r.towers, r.gold, r.hp];
+    const v = [fmt(r.kills), fmt(r.dmg), r.towers, fmt(r.gold), r.hp];
     for (let j = 0; j < u.length && j < v.length; j++) setText(u[j], v[j]);
   }
 }
@@ -1567,18 +1594,18 @@ function hud() {
   if (upgAt && (tool !== 'up' || !sim.towerAt(upgAt.x, upgAt.y))) closeUpgrade();
   if (solo) {
     const p = sim.players[0];
-    setText(el.kills,  p.kills);
+    setText(el.kills,  fmt(p.kills));
     setText(el.towers, sim.towers.length);
-    setText(el.dmg,    p.dmg);
+    setText(el.dmg,    fmt(p.dmg));
   }
   setText(el.wave,  sim.wave);
   setText(el.lives, sim.lives);
   el.lives.className   = 'v' + (sim.lives <= 5 ? ' warn' : '');
-  setText(el.gold, sim.players[meId()].gold);
+  setText(el.gold, fmt(sim.players[meId()].gold));
   if (duelBoards && simMate) {
     setText(el.mbWave,  simMate.over ? (simMate.wave - 1) + ' (кінець)' : simMate.wave);
     setText(el.mbLives, simMate.lives);
-    setText(el.mbGold,  simMate.players[0].gold);
+    setText(el.mbGold,  fmt(simMate.players[0].gold));
   }
   const nx = sim.nextInfo();
   /* Відлік стоїть тут, а не на кнопці: на кнопці він мінявся щосекунди,
@@ -2027,7 +2054,7 @@ coopBlocked();     // одразу показати стан кооперати�
 el.coopDiag.textContent = 'вікно №' + net.myId + ' · версія ' + BUILD + ' — у обох має бути однакова';
 autoJoinFromLink();   // ?room=... у посиланні — після boot(), щоб не змішати solo зі стартом коопу
 window.CHOKEPOINT = {
-  contribution,
+  contribution, fmt,
   get sim() { return sim; }, get ls() { return ls; }, get net() { return net; },
   get simMate() { return simMate; }, get duelBoards() { return duelBoards; },
   get inLobby() { return inLobby; },

@@ -30,13 +30,17 @@ type Voice = {
 const VOICES: Record<string, Voice> = {
   kill:  { from: 620, to: 300, dur: 0.07, gain: 0.05, type: 'square',   rate: 10 },
   boom:  { from: 180, to:  60, dur: 0.16, gain: 0.09, type: 'triangle', rate: 8  },
-  leak:  { from: 150, to:  48, dur: 0.34, gain: 0.22, type: 'sawtooth' },
+  /* Прорив був пилою на низькій частоті з гучністю 0.22 — саме та
+     комбінація, що деренчить. Тепер це глухий удар: синус, тихіше й
+     коротше. Подія й так підкріплена трясінням і спалахом, звукові
+     лишається тільки позначити її, а не перекрикувати. */
+  leak:  { from: 210, to:  62, dur: 0.26, gain: 0.09, type: 'sine' },
   build: { from: 380, to: 620, dur: 0.07, gain: 0.10, type: 'square'   },
   up:    { from: 520, to: 880, dur: 0.13, gain: 0.11, type: 'triangle' },
   raze:  { from: 300, to: 120, dur: 0.11, gain: 0.10, type: 'sawtooth' },
   wave:  { from: 300, to: 520, dur: 0.20, gain: 0.14, type: 'triangle' },
   clear: { from: 520, to: 780, dur: 0.24, gain: 0.14, type: 'triangle' },
-  lost:  { from: 240, to:  70, dur: 0.90, gain: 0.26, type: 'sawtooth' },
+  lost:  { from: 220, to:  62, dur: 0.85, gain: 0.16, type: 'triangle' },
   deny:  { from: 200, to: 160, dur: 0.09, gain: 0.08, type: 'square'   },
 };
 
@@ -62,7 +66,15 @@ export function wakeSfx() {
     ctx = new AC();
     master = ctx!.createGain();
     master.gain.value = on ? 1 : 0;
-    master.connect(ctx!.destination);
+    /* Синтезовані хвилі різкі на верхах — square й sawtooth дають гострі
+       гармоніки, від яких вухо втомлюється за хвилину гри. М'який зріз
+       знімає це з усього виходу одразу, не чіпаючи самих голосів. */
+    const lp = ctx!.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 2600;
+    lp.Q.value = 0.7;
+    master.connect(lp);
+    lp.connect(ctx!.destination);
   } catch { ctx = null; }
 }
 

@@ -102,6 +102,20 @@ window.addEventListener('load', async () => {
       const нулі = contrib([{ kills: 0, dmg: 0 }, { kills: 0, dmg: 0 }]);
       check('порожня партія не ділить на нуль', Number.isFinite(нулі[0]) && Number.isFinite(нулі[1]));
     }
+    /* Формат чисел уже раз зламався мовчки: зворотні скісні в регулярці
+       згубились при правці, і роздільники просто зникли, а на вигляд усе
+       лишалось «майже так». Тепер перевіряється. */
+    const fmt = w.CHOKEPOINT.fmt;
+    check('форматувальник чисел експортований', typeof fmt === 'function');
+    if (typeof fmt === 'function') {
+      const nb = String.fromCharCode(160);
+      check('до тисячі — без роздільників', fmt(999) === '999', fmt(999));
+      check('розряди відділяються', fmt(1284730) === '1' + nb + '284' + nb + '730', fmt(1284730));
+      check('роздільник нерозривний', fmt(1000).indexOf(nb) > 0 && fmt(1000).indexOf(' ') < 0);
+      check('до десяти мільйонів не скорочується', fmt(9999999).indexOf('М') < 0, fmt(9999999));
+      check('від десяти мільйонів скорочується', fmt(10523491) === '10.52М', fmt(10523491));
+      check('нуль лишається нулем', fmt(0) === '0', fmt(0));
+    }
     check('є панель підсумку', !!d.getElementById('veilScore'));
     check('є тумблер звуку', !!d.getElementById('sfxToggle'));
   }
