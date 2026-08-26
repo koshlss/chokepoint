@@ -64,7 +64,11 @@ function cover(sim: any, x: number, y: number, range: number): number {
 function worth(t: Tool, dmg: number): number {
   const direct = t.cd ? dmg * 30 / t.cd : 0;
   const burn   = t.dot ? t.dot * 2 : 0;          // тліє раз на 15 тіків
-  const area   = t.splash ? 1.6 : 1;             // площа б'є кількох
+  /* Площу беремо з самої моделі, а не сталою 1.6. Стала недооцінювала
+     великі вибухи й переоцінювала дрібні, і через це Гармата не будувалась
+     ЖОДНОГО разу, хоч Вогнище з майже тими самими числами ставало опорною
+     вежею Вогню. Стенд міряв не баланс, а власне припущення. */
+  const area   = 1 + (t.splash ? Math.max(0, t.splash - 0.55 * SUB) / SUB : 0);
   const hold   = t.slow ? 1 + (t.slow / 200) : 1; // сповільнення = більше часу під вогнем
   return (direct * area + burn) * hold;
 }

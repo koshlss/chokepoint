@@ -81,7 +81,7 @@ const POINT: Tree = {
     ],
     shell: [
       SLEDGE,
-      { key:'spray', name:'Розсів', splashAdd:tiles(0.55), dmg:65,
+      { key:'spray', name:'Розсів', splashAdd:tiles(1.05), dmg:67,
         blurb:'Удар зачіпає й тих, хто поруч із ціллю.' },
     ],
   },
@@ -90,7 +90,7 @@ const POINT: Tree = {
 /* ══ ВИБУХОВІ ══ ті, що вже б'ють площею ─────────────────────────── */
 const AREA: Tree = {
   main: [
-    { key:'wide', name:'Розкид', splashAdd:tiles(0.45), dmg:84,
+    { key:'wide', name:'Розкид', splashAdd:tiles(0.45), dmg:80,
       blurb:'Вибух ширший, але слабший.' },
     { key:'core', name:'Осердя', dmg:115, splash:78,
       blurb:'Вибух вужчий, зате щільніший.' },

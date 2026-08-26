@@ -12,7 +12,7 @@ import { TOOLS, TOOL_BY_KEY, UPG, MAX_LVL } from '../src/content/towers';
 import { LOADOUTS, PRIMARIES, SUPPORTS } from '../src/content/loadouts';
 import {
   power, efficiency, efficiencyAt, controlPerGold, buildTicks,
-  BAND, TIER_STEP_MIN, supportValue,
+  BAND, TIER_STEP_MIN, supportValue, targetEff, TIER_EFF_TOL,
 } from '../src/content/power';
 import {
   treeOf, isSimple, choicesAt, statsFor, allPaths, perkCode, PERK_KEYS,
@@ -212,5 +212,40 @@ describe('правило 4 · гілки прокачки', () => {
       seen.add(c);
     }
     expect(perkCode('')).toBe(0);   // «вибору не було» — теж значення
+  });
+});
+
+/* ── ПРАВИЛО 5 · віддача росте з рівнем ───────────────────────────────
+   Доти вона була однакова на всіх рівнях, і замір показав, чим це
+   закінчується: Вогонь ставив 82% дошки однією Іскрою, а Мортира,
+   Гармата, Горнило й Жаровня не будувались жодного разу. Причина не в
+   боті, а в арифметиці — дорога вежа коштувала більше й давала стільки
+   ж на золото. */
+describe('правило 5 · сходинка віддачі за рівнем', () => {
+  const dmgTools = TOOLS.filter(t => t.shot && t.faction !== 'ice' && t.faction !== 'toxic');
+
+  it('кожна бойова вежа лежить на сходинці свого рівня', () => {
+    for (const t of dmgTools) {
+      const want = targetEff(t.cost);
+      const got = efficiency(t);
+      expect(Math.abs(got - want), `${t.name}: ${got.toFixed(3)} проти ${want}`)
+        .toBeLessThanOrEqual(TIER_EFF_TOL);
+    }
+  });
+
+  it('сходинка справді росте, а не стоїть', () => {
+    expect(targetEff(170)).toBeGreaterThan(targetEff(45) * 1.12);
+    expect(targetEff(620)).toBeGreaterThan(targetEff(170) * 1.12);
+  });
+
+  it('дорожча вежа завжди вигідніша за дешевшу', () => {
+    // інакше сходинка є лише в середньому, і окрема дорога вежа знову
+    // виявляється марною покупкою
+    const sorted = [...dmgTools].sort((a, b) => a.cost - b.cost);
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].cost === sorted[i - 1].cost) continue;
+      expect(efficiency(sorted[i]), `${sorted[i].name} проти ${sorted[i - 1].name}`)
+        .toBeGreaterThan(efficiency(sorted[i - 1]) * 0.98);
+    }
   });
 });
