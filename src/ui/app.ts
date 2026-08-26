@@ -1,5 +1,6 @@
 import Peer from 'peerjs';
 import { perkOf } from '../content/upgrades';
+import { sfx, sfxOn, setSfx, wakeSfx } from './sfx';
 import { TPS, SUB, GW, GH, idx, MODE_MAZE, MODE_FIXED } from '../sim/constants';
 import { Sim } from '../sim/sim';
 import { MAPS } from '../content/maps';
@@ -88,6 +89,7 @@ const el = {
   webhookUrl: byId<HTMLInputElement>('webhookUrl'), webhookTest: byId<HTMLButtonElement>('btnWebhookTest'),
   webhookHint: byId('webhookHint'), downloadLog: byId<HTMLButtonElement>('btnDownloadLog'),
   duelField: byId('duelField'), duel: byId<HTMLSelectElement>('duelToggle'),
+  sfxToggle: byId<HTMLInputElement>('sfxToggle'),
   upgPick: byId('upgPick'), upgTitle: byId('upgTitle'), upgCost: byId('upgCost'), upgOpts: byId('upgOpts'),
   mateBoard: byId('mateBoard'),
   mbWave: byId('mbWave'), mbLives: byId('mbLives'), mbGold: byId('mbGold'),
@@ -97,7 +99,7 @@ const el = {
   kills: byId('rKills'), towers: byId('rTowers'), dmg: byId('rDmg'),
   primarySel: byId<HTMLSelectElement>('primarySel'), supportSel: byId<HTMLSelectElement>('supportSel'),
   loadoutField: byId('loadoutField'),
-  veilFactions: byId('veilFactions'), towerTip: byId('towerTip'),
+  veilFactions: byId('veilFactions'), veilScore: byId('veilScore'), towerTip: byId('towerTip'),
 };
 
 MAPS.forEach((m, i) => {
@@ -121,6 +123,9 @@ enforceMapMode();   // якщо випало Кільце — режим одр�
 let sim: Sim, ls: Lockstep, simMate: Sim | null = null, mateOverSaid = false, lobbyPreview: any = null, tool: Cursor = TOOLS[1], paused = false, speed = 1;
 let hoverX = -1, hoverY = -1, acc = 0, last = 0;
 let fx = [], looping = false, stalled = false, desync = null;
+/* Тряска дошки й червоний спалах на прорив. Обидва згасають самі; сама
+   симуляція про них не знає — це чисто відгук. */
+let shake = 0, flash = 0;
 
 /* Перший запуск не мусить одразу кидати в бій — дай обрати мапу/режим,
    чи створити лобі. Далі (рестарт, нова партія, поразка) вже без цього
@@ -131,6 +136,7 @@ function hasRoomParam() { return !!(new URLSearchParams(location.search).get('ro
 function showStartVeil() {
   el.veil.hidden = false;
   el.veil.className = 'veil start';
+  el.veilScore.hidden = true;      // підсумок минулої партії тут ні до чого
   el.veilReady.hidden = true; el.veilB2.hidden = true; el.veilB.hidden = false;
   /* Кнопку треба саме ВВІМКНУТИ, а не лише перепідписати: лобі вимикає її,
      поки гість не готовий, і після повернення в соло вона лишалась мертвою
@@ -867,6 +873,12 @@ el.wave_.onclick = () => enqueue({ t:'wave' });
 el.restart.onclick = hostNewGame;
 el.seed.onchange = onHeaderChange;
 el.diff.onchange = onHeaderChange;
+el.sfxToggle.checked = sfxOn();
+el.sfxToggle.onchange = () => { setSfx(el.sfxToggle.checked); if (el.sfxToggle.checked) { wakeSfx(); sfx('build'); } };
+/* Браузер не дасть завести звук до першої дії гравця, тож чіпляємось за
+   найперший клік по сторінці й одразу відчіпляємось. */
+addEventListener('pointerdown', wakeSfx, { once: true });
+
 el.mapSel.onchange = onHeaderChange;
 el.modeSel.onchange = onHeaderChange;
 el.duel.onchange = onHeaderChange;
@@ -1275,25 +1287,39 @@ let stats; resetStats();
 /* Події симуляції → журнал і спалахи. Читаємо, не пишемо. */
 function digest() {
   for (const e of sim.events) {
-    if (e.e === 'wave')       say('Хвиля ' + e.n + ' — ' + KIND_NAME[e.kind] + (e.esc ? ' із супроводом' : ''), 'note');
-    else if (e.e === 'up')    { if (e.p === meId()) { stats.upgraded++; say('Прокачано до рівня ' + e.lvl, 'good'); } }
+    if (e.e === 'wave')       { say('Хвиля ' + e.n + ' — ' + KIND_NAME[e.kind] + (e.esc ? ' із супроводом' : ''), 'note'); sfx('wave'); }
+    else if (e.e === 'up')    { if (e.p === meId()) { stats.upgraded++; say('Прокачано до рівня ' + e.lvl, 'good'); sfx('up'); } }
     else if (e.e === 'aim')   { if (e.p === meId()) say('Ціль: ' + AIMS[e.m], 'note'); }
-    else if (e.e === 'clear') say('Хвилю ' + e.n + ' відбито. +' + e.gold + ' зол.', 'good');
-    else if (e.e === 'leak')  { stats.leaks++; say('Прорив! −' + e.dmg + ' життя', 'bad'); fx.push({ t:'ring', x:e.x, y:e.y, life:20, max:20, c:C('--coral') }); }
+    else if (e.e === 'clear') { say('Хвилю ' + e.n + ' відбито. +' + e.gold + ' зол.', 'good'); sfx('clear'); }
+    else if (e.e === 'leak')  {
+      stats.leaks++; say('Прорив! −' + e.dmg + ' життя', 'bad'); sfx('leak');
+      fx.push({ t:'ring', x:e.x, y:e.y, life:20, max:20, c:C('--coral') });
+      fx.push({ t:'text', x:e.x, y:e.y, life:44, max:44, c:C('--coral'), s:'−' + e.dmg });
+      /* Прорив мусить відчуватись, а не лише з'явитись у журналі: доти
+         життя тихо зникало, і помітити це можна було, тільки дивлячись
+         на лічильник. */
+      shake = Math.min(14, shake + 7);
+      flash = 1;
+    }
     else if (e.e === 'raze')  { if (e.p === meId()) { stats.razed++; say(e.full ? ('Знесено, повернено все: +' + e.gold) : ('Знесено зі штрафом: +' + e.gold), e.full ? 'good' : null); } }
-    else if (e.e === 'deny')  { if (e.p === meId()) { stats.denied++; say('Не можна: ' + e.why, 'bad'); } }
+    else if (e.e === 'deny')  { if (e.p === meId()) { stats.denied++; say('Не можна: ' + e.why, 'bad'); sfx('deny'); } }
     else if (e.e === 'early') say('Достроково. +' + e.gold + ' зол. усім', 'good');
     else if (e.e === 'vote')  { if (e.of > 1 && e.n < e.of) say('Голос за прискорення: ' + e.n + '/' + e.of, 'note'); }
-    else if (e.e === 'lost')  showLost();
+    else if (e.e === 'lost')  { sfx('lost'); showLost(); }
     /* Вибух малюється кольором ТІЄЇ вежі, що стріляла, і живе довше:
        доти це був тонкий контур кольору мортири на чверть секунди, тож
        вибух Криги чи Отрути виглядав однаково й майже непомітно — площа
        здавалась несправною, хоч рахувалась правильно. */
-    else if (e.e === 'boom')  fx.push({ t:'ring', x:e.x, y:e.y, life:18, max:18,
-                                        c:C(TOOL_BY_KEY[e.k]?.swatch || '--t-mortar'), r:e.r });
+    else if (e.e === 'boom')  { sfx('boom'); fx.push({ t:'ring', x:e.x, y:e.y, life:18, max:18,
+                                        c:C(TOOL_BY_KEY[e.k]?.swatch || '--t-mortar'), r:e.r }); }
     else if (e.e === 'bounty'){ stats.bounty++; fx.push({ t:'spark', x:e.x, y:e.y, life:22, max:22, c:C('--brass') }); }
-    else if (e.e === 'kill')  { stats.kills++; fx.push({ t:'spark', x:e.x, y:e.y, life:10, max:10, c:C('--text-faint') }); }
-    else if (e.e === 'build') { if (e.p === meId()) stats.built++; }
+    else if (e.e === 'kill')  {
+      stats.kills++; sfx('kill');
+      fx.push({ t:'spark', x:e.x, y:e.y, life:10, max:10, c:C('--text-faint') });
+      // золото за вбивство видно там, де воно сталось, а не лише в лічильнику
+      if (e.p === meId() && e.gold) fx.push({ t:'text', x:e.x, y:e.y, life:34, max:34, c:C('--brass'), s:'+' + e.gold });
+    }
+    else if (e.e === 'build') { if (e.p === meId()) { stats.built++; sfx('build'); } }
   }
   for (const f of fx) f.life--;
   fx = fx.filter(f => f.life > 0);
@@ -1307,8 +1333,75 @@ function digestMate() {
     mateOverSaid = true;
     say('Лінія напарника впала на хвилі ' + (simMate.wave - 1), 'bad');
     el.mateBoard.classList.add('over');
+    // якщо мій бік упав раніше, підсумок уже висить — тепер його є чим завершити
+    if (!el.veilScore.hidden) setHTML(el.veilScore, resultHtml());
   }
 }
+/* ══ ПІДСУМОК ПАРТІЇ ══════════════════════════════════════════════════
+   Гра розрахована передусім на двох, тож кінець партії має відповідати на
+   питання «хто краще», а не просто «скільки хвиль».
+
+   Рахується це по-різному, бо режими різні:
+
+     кожен сам за себе — у кожного свої життя, тож виграє той, ХТО ДОВШЕ
+       ПРОТРИМАВСЯ. Рівні хвилі — дивимось на внесок;
+
+     спільна лінія — життя одні на двох, «пережити довше» не буває. Тому
+       виграє більший ВНЕСОК.
+
+   Внесок — половина від частки вбивств і половина від частки шкоди.
+   Самих вбивств замало: вбивство зараховують тому, чий постріл був
+   останнім, і його часто забирає вежа, що стоїть найближче до виходу,
+   хоч усю роботу зробили чужі. Самої шкоди теж замало: добити — окреме
+   вміння, і воно має щось важити. Тому порівну. */
+/** Внесок кожного: половина від частки вбивств, половина від частки шкоди.
+ *  Винесено окремо саме щоб це можна було перевірити тестом, а не очима. */
+export function contribution(rows: { kills: number; dmg: number }[]): number[] {
+  const kAll = rows.reduce((a, r) => a + r.kills, 0) || 1;
+  const dAll = rows.reduce((a, r) => a + r.dmg, 0) || 1;
+  return rows.map(r => 0.5 * (r.kills / kAll) + 0.5 * (r.dmg / dAll));
+}
+
+function resultRows() {
+  const solo = net.solo;
+  if (solo) return [{ p: 0, name: 'Ти', wave: sim.wave - 1, kills: sim.players[0].kills, dmg: sim.players[0].dmg, share: 1 }];
+  const rows = duelBoards
+    ? [{ p: netP(), wave: sim.wave - (sim.over ? 1 : 0), kills: sim.players[0].kills, dmg: sim.players[0].dmg },
+       { p: 1 - netP(), wave: simMate ? simMate.wave - (simMate.over ? 1 : 0) : 0,
+         kills: simMate ? simMate.players[0].kills : 0, dmg: simMate ? simMate.players[0].dmg : 0 }]
+    : sim.players.map((pl: any, i: number) => ({ p: i, wave: sim.wave - 1, kills: pl.kills, dmg: pl.dmg }));
+  const shares = contribution(rows);
+  return rows.map((r: any, i: number) => ({ ...r, name: identName(r.p), share: shares[i] }));
+}
+
+function resultHtml() {
+  const rows = resultRows();
+  if (rows.length < 2) {
+    const r = rows[0];
+    return '<div class="score"><div class="sRow"><b>Витримано хвиль</b><u>' + r.wave + '</u></div>' +
+           '<div class="sRow"><b>Вбито</b><u>' + r.kills + '</u></div>' +
+           '<div class="sRow"><b>Шкода</b><u>' + r.dmg + '</u></div></div>';
+  }
+  /* У дуелі мій бік може впасти першим, а напарник ще грати — тоді
+     переможця оголошувати зарано: він щойно обжене мене по хвилі. Тому
+     доки жива хоч одна дошка, показуємо числа без вироку. */
+  const pending = duelBoards && simMate && !(sim.over && simMate.over);
+  // у дуелі вирішує хвиля, на спільній лінії — внесок
+  const byWave = duelBoards && rows[0].wave !== rows[1].wave;
+  const sorted = [...rows].sort((a, b) => byWave ? b.wave - a.wave : b.share - a.share);
+  const win = sorted[0];
+  const tie = byWave ? false : Math.abs(sorted[0].share - sorted[1].share) < 0.02;
+  const head = pending ? 'Напарник ще тримається' : tie ? 'Нічия' : escapeHtml(win.name) + ' — перемога';
+  const why = byWave ? 'протримався довше' : 'більший внесок';
+  return '<div class="score">' +
+    '<div class="sWin">' + head + (tie || pending ? '' : ' <i>' + why + '</i>') + '</div>' +
+    '<div class="sHead"><b>гравець</b><u>хвиля</u><u>вбито</u><u>шкода</u><u>внесок</u></div>' +
+    sorted.map(r => '<div class="sRow' + (r === win && !tie && !pending ? ' me' : '') + '"><b>' + escapeHtml(r.name) + '</b>' +
+      '<u>' + r.wave + '</u><u>' + r.kills + '</u><u>' + r.dmg + '</u>' +
+      '<u>' + Math.round(r.share * 100) + '%</u></div>').join('') +
+    '</div>';
+}
+
 function showLost() {
   el.veil.hidden = false; el.veilFactions.hidden = true;
   el.veil.className = 'veil lost';
@@ -1318,6 +1411,8 @@ function showLost() {
     ? (simMate.over ? ' · напарник теж упав, хвиля ' + (simMate.wave - 1) : ' · напарник ще тримається, хвиля ' + simMate.wave)
     : '';
   const base = 'Витримано хвиль: ' + (sim.wave - 1) + ' · сід ' + sim.seedStr + mateNote;
+  setHTML(el.veilScore, resultHtml());
+  el.veilScore.hidden = false;
   if (net.solo) {
     el.veilX.textContent = base;
     el.veilB.hidden = false; el.veilB.disabled = false;
@@ -1584,7 +1679,16 @@ function renderMate() {
 
 function render(alpha) {
   const W = GW * TS, H = GH * TS;
-  ctx.fillStyle = C('--ink-2'); ctx.fillRect(0, 0, W, H);
+  /* Тряска — це зсув усього кадру на кілька пікселів, що згасає за пів
+     секунди. Дешево і читається одразу: прорив тепер відчутний, а не
+     лише занотований у журналі. */
+  ctx.save();
+  if (shake > 0.4) {
+    const k = shake;
+    ctx.translate(((tickPhase() * 7 % 2) - 1) * k, ((tickPhase() * 11 % 2) - 1) * k);
+    shake *= 0.86;
+  } else shake = 0;
+  ctx.fillStyle = C('--ink-2'); ctx.fillRect(-20, -20, W + 40, H + 40);
 
   // сітка
   ctx.strokeStyle = C('--line-soft'); ctx.lineWidth = 1;
@@ -1660,13 +1764,36 @@ function render(alpha) {
       ctx.restore();
       ctx.strokeStyle = f.c; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(x, y, rr, 0, 6.2832); ctx.stroke();
+    } else if (f.t === 'text') {
+      // цифра підіймається й тане — видно, ЩО саме сталось на цьому місці
+      ctx.fillStyle = f.c;
+      ctx.font = '700 ' + Math.round(TS * .42) + 'px ' + C('--mono');
+      ctx.textAlign = 'center';
+      ctx.fillText(f.s, x, y - (1 - a) * TS * 1.1);
+      ctx.textAlign = 'start';
     } else {
       ctx.fillStyle = f.c;
       ctx.beginPath(); ctx.arc(x, y, TS * .16 * a + 1, 0, 6.2832); ctx.fill();
     }
     ctx.globalAlpha = 1;
   }
+
+  ctx.restore();                       // знімаємо зсув тряски
+  /* Червоний спалах по всій дошці — на випадок, якщо прорив стався там,
+     куди гравець саме не дивиться. Гасне за третину секунди. */
+  if (flash > 0.02) {
+    ctx.save();
+    ctx.globalAlpha = flash * 0.30;
+    ctx.fillStyle = C('--coral');
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+    flash *= 0.88;
+  } else flash = 0;
 }
+/** Дрібний невпорядкований зсув для тряски. Свій, бо Math.random у
+ *  малюванні зайвий, а детермінізму тут і не треба. */
+let shakeSeed = 1;
+function tickPhase() { shakeSeed = (shakeSeed * 1103515245 + 12345) & 0x7fffffff; return shakeSeed / 0x7fffffff * 2; }
 const lerp = (a, b, t) => a + (b - a) * t;
 
 function drawPath() {
@@ -1900,6 +2027,7 @@ coopBlocked();     // одразу показати стан кооперати�
 el.coopDiag.textContent = 'вікно №' + net.myId + ' · версія ' + BUILD + ' — у обох має бути однакова';
 autoJoinFromLink();   // ?room=... у посиланні — після boot(), щоб не змішати solo зі стартом коопу
 window.CHOKEPOINT = {
+  contribution,
   get sim() { return sim; }, get ls() { return ls; }, get net() { return net; },
   get simMate() { return simMate; }, get duelBoards() { return duelBoards; },
   get inLobby() { return inLobby; },

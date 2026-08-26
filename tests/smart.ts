@@ -139,33 +139,37 @@ export function runSmart(mapIdx: number, mode: number, seed: string, opts: Smart
        одиницях, інакше порівнюємо різні речі: вона додає mark% до тієї
        частини армійської шкоди, що припадає на позначені кроки. */
     let armyValue = 0;
-    const markedSteps = new Set<number>();
+    /* Не «позначено чи ні», а НАСКІЛЬКИ позначено. Доти рахувалось лише
+       нове покриття, і сильніша позначка на вже покритій ділянці не
+       коштувала нічого — тому жодна допоміжна вежа вище першого рівня не
+       будувалась ніколи. У грі ж діє НАЙСИЛЬНІША позначка, тож замінити
+       слабку на сильну на тій самій ділянці — реальний приріст. */
+    const markAt = new Float64Array(route.length);
     for (const tw of sim.towers) {
       const b = TOOL_BY_KEY[tw.k];
       armyValue += worth(b, tw.st.dmg) * cover(sim, tw.x, tw.y, tw.st.range);
-      if (!b.mark) continue;
+      if (!tw.st.mark) continue;
       const r2 = tw.st.range * tw.st.range;
       const cx = tw.x * SUB + (SUB >> 1), cy = tw.y * SUB + (SUB >> 1);
       for (let k = 0; k < route.length; k++) {
         const p = route[k];
         const dx = (p % GW) * SUB + (SUB >> 1) - cx;
         const dy = ((p / GW) | 0) * SUB + (SUB >> 1) - cy;
-        if (dx * dx + dy * dy <= r2) markedSteps.add(k);
+        if (dx * dx + dy * dy <= r2 && tw.st.mark > markAt[k]) markAt[k] = tw.st.mark;
       }
     }
-    /** Скільки кроків траси ця клітина позначила б УПЕРШЕ. */
-    const freshMark = (x: number, y: number, range: number) => {
+    /** Скільки позначки ця клітина ДОДАЛА б понад те, що вже є. */
+    const markGain = (x: number, y: number, range: number, mark: number) => {
       const r2 = range * range;
       const cx = x * SUB + (SUB >> 1), cy = y * SUB + (SUB >> 1);
-      let n = 0;
+      let g = 0;
       for (let k = 0; k < route.length; k++) {
-        if (markedSteps.has(k)) continue;
         const p = route[k];
         const dx = (p % GW) * SUB + (SUB >> 1) - cx;
         const dy = ((p / GW) | 0) * SUB + (SUB >> 1) - cy;
-        if (dx * dx + dy * dy <= r2) n++;
+        if (dx * dx + dy * dy <= r2) g += Math.max(0, mark - markAt[k]);
       }
-      return n;
+      return g;
     };
 
     for (const t of allowed()) {
@@ -185,7 +189,7 @@ export function runSmart(mapIdx: number, mode: number, seed: string, opts: Smart
           c += Math.max(0, len - sim.pathLength()) * 3;
         }
         let value = worth(t, t.dmg) * c;
-        if (t.mark) value += (t.mark / 100) * armyValue * (freshMark(x, y, t.range) / Math.max(1, steps));
+        if (t.mark) value += (markGain(x, y, t.range, t.mark) / 100) * armyValue / Math.max(1, steps);
         const score = value / t.cost;
         if (!best || score > best.score) best = { kind: 'build', score, x, y, k: t.key, cost: t.cost };
       }

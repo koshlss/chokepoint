@@ -74,21 +74,21 @@ const TOOLS: Tool[] = ([
   { key:'frost',   faction:'ice',   tier:1, name:'Кріостат',   cost:60,  dmg:5,   cd:9,  range:tiles(3.0), shot:120, swatch:'--t-frost',
     spread:tiles(0.9), slow:25, slowT:16, mark:60, blurb:'Студить усіх поруч і позначає їх. Майже не б’є.' },
   { key:'sleet',   faction:'ice',   tier:1, name:'Ожеледь',    cost:150, dmg:24,  cd:20, range:tiles(3.2), shot:100, swatch:'--t-sleet',
-    spread:tiles(1.3), slow:40, slowT:18, mark:60, blurb:'Сильніший мороз ширшою плямою. Позначає.' },
+    spread:tiles(1.3), slow:40, slowT:18, mark:74, blurb:'Сильніший мороз ширшою плямою. Позначає помітніше.' },
   { key:'glacier', faction:'ice',   tier:2, name:'Льодовик',   cost:320, dmg:49,  cd:40, range:tiles(3.2), shot:80,  swatch:'--t-glacier',
-    splash:tiles(1.1), spread:tiles(1.9), slow:100, slowT:18, mark:60, blurb:'Заморожує групу намертво на мить. Позначає.' },
+    splash:tiles(1.1), spread:tiles(1.9), slow:100, slowT:18, mark:92, blurb:'Заморожує групу намертво на мить. Позначає важко.' },
   { key:'rift',    faction:'ice',   tier:3, name:'Розлом',     cost:600, dmg:79, cd:46, range:tiles(3.8), shot:90,  swatch:'--t-rift',
-    splash:tiles(1.4), spread:tiles(2.4), slow:100, slowT:26, mark:60, blurb:'Довша повна заморозка, ширша пляма. Позначає.' },
+    splash:tiles(1.4), spread:tiles(2.4), slow:100, slowT:26, mark:112, blurb:'Довша повна заморозка, ширша пляма. Позначає найважче.' },
 
   /* ══ ОТРУТА ══ допоміжна: довго й м'яко ───────────────────────────── */
   { key:'venom',   faction:'toxic', tier:1, name:'Токсин',     cost:60,  dmg:3,   cd:20, range:tiles(3.0), shot:95,  swatch:'--t-venom',
     dot:4, dotT:90, mark:25, blurb:'Труїть надовго й крізь броню. Позначає.' },
   { key:'mire',    faction:'toxic', tier:1, name:'Багно',      cost:150, dmg:18,  cd:24, range:tiles(3.1), shot:85,  swatch:'--t-mire',
-    slow:25, slowT:40, dot:4, dotT:90, mark:25, blurb:'В’язко тримає й труїть. Позначає.' },
+    slow:25, slowT:40, dot:4, dotT:90, mark:31, blurb:'В’язко тримає й труїть. Позначає помітніше.' },
   { key:'blight',  faction:'toxic', tier:2, name:'Пошесть',    cost:320, dmg:31,  cd:44, range:tiles(3.4), shot:110, swatch:'--t-blight',
-    splash:tiles(1.3), slow:25, slowT:35, dot:8, dotT:120, mark:25, blurb:'Хмара: тримає й труїть цілу групу. Позначає.' },
+    splash:tiles(1.3), slow:25, slowT:35, dot:8, dotT:120, mark:39, blurb:'Хмара: тримає й труїть цілу групу. Позначає важко.' },
   { key:'plague',  faction:'toxic', tier:3, name:'Мор',        cost:600, dmg:55, cd:50, range:tiles(3.8), shot:100, swatch:'--t-plague',
-    splash:tiles(1.5), dot:14, dotT:150, mark:25, blurb:'Найсильніша отрута, на всю групу. Позначає.' },
+    splash:tiles(1.5), dot:14, dotT:150, mark:49, blurb:'Найсильніша отрута, на всю групу. Позначає найважче.' },
 
 ] as Omit<Tool, 'slot'>[]).map((t, i) => ({ ...t, slot: i }));
 

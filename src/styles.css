@@ -372,3 +372,22 @@ details.adv .body{padding-top:8px; display:flex; flex-direction:column; gap:7px}
    щоб «Прокачати» не читалось як ще одна башта на продаж. */
 .tierHead.ctlHead{margin-top:14px; padding-top:9px; border-top:1px solid var(--line);
   color:var(--text-dim)}
+
+/* ─── підсумок партії ─── */
+/* Таблиця результату на вуалі кінця. Гра розрахована на двох, тож головне
+   тут — не «скільки хвиль», а хто краще, і чому саме. */
+.score{margin:10px 0 2px; width:100%; max-width:420px; display:flex; flex-direction:column; gap:2px}
+.score .sWin{font-family:var(--display); font-size:15px; letter-spacing:.06em; color:var(--brass);
+  margin-bottom:6px}
+.score .sWin i{font-style:normal; font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+  color:var(--text-faint); margin-left:6px}
+.score .sHead, .score .sRow{display:grid; grid-template-columns:minmax(0,1fr) 52px 56px 78px 62px;
+  gap:6px; align-items:baseline; padding:3px 8px; border-radius:3px}
+.score .sHead{font-family:var(--display); font-size:9.5px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--text-faint)}
+.score .sHead u, .score .sRow u{text-decoration:none; text-align:right; font-variant-numeric:tabular-nums}
+.score .sRow{background:var(--panel); font-family:var(--mono); font-size:12.5px; color:var(--text-dim)}
+.score .sRow b{font-family:var(--display); font-size:12.5px; color:var(--text); font-weight:600;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.score .sRow.me{background:#20180B; color:var(--text)}
+.score .sRow.me b{color:var(--brass)}

@@ -82,6 +82,30 @@ window.addEventListener('load', async () => {
         [...duelCb.options].map(o => o.text).join(' / '));
   check('вибір гри вдвох неактивний у соло (немає з ким)', duelCb.disabled === true || d.getElementById('duelField').className.indexOf('na') >= 0);
 
+  /* 0дд. Підсумок партії: гра розрахована на двох, тож кінець має
+          відповідати «хто краще». Внесок — половина від частки вбивств,
+          половина від частки шкоди: самих вбивств замало (їх забирає
+          вежа біля виходу), самої шкоди теж (добити — окреме вміння). */
+  {
+    const contrib = w.CHOKEPOINT.contribution;
+    check('формула внеску експортована', typeof contrib === 'function');
+    if (typeof contrib === 'function') {
+      const rівні = contrib([{ kills: 100, dmg: 1000 }, { kills: 100, dmg: 1000 }]);
+      check('однаковий внесок дає порівну', Math.abs(rівні[0] - 0.5) < 1e-9 && Math.abs(rівні[1] - 0.5) < 1e-9,
+            rівні.map(v => v.toFixed(3)).join(' / '));
+      const менше = contrib([{ kills: 150, dmg: 100 }, { kills: 50, dmg: 100 }]);
+      check('більше вбивств — більший внесок', менше[0] > менше[1], менше.map(v => v.toFixed(3)).join(' / '));
+      const шкода = contrib([{ kills: 100, dmg: 300 }, { kills: 100, dmg: 100 }]);
+      check('шкода теж важить, а не лише вбивства', шкода[0] > шкода[1], шкода.map(v => v.toFixed(3)).join(' / '));
+      const сума = contrib([{ kills: 7, dmg: 13 }, { kills: 3, dmg: 21 }]);
+      check('внески дають рівно одиницю', Math.abs(сума[0] + сума[1] - 1) < 1e-9);
+      const нулі = contrib([{ kills: 0, dmg: 0 }, { kills: 0, dmg: 0 }]);
+      check('порожня партія не ділить на нуль', Number.isFinite(нулі[0]) && Number.isFinite(нулі[1]));
+    }
+    check('є панель підсумку', !!d.getElementById('veilScore'));
+    check('є тумблер звуку', !!d.getElementById('sfxToggle'));
+  }
+
   /* 0д. Панель гравців: у соло її бути НЕ має — рядок на одного лише
          дублював би шапку. Натомість у шапці стоїть особиста стата. */
   for (const id of ['myName','mySwatches','rosterBody','playersTop','rKills','rTowers','rDmg'])

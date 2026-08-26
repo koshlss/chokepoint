@@ -96,6 +96,9 @@
                рішення на всю партію, і його видно перед самим стартом. -->
           <div class="factions" id="veilFactions" hidden></div>
           <p class="readyDot" id="veilReady" hidden><b></b><span></span></p>
+          <!-- Підсумок партії. Гра розрахована на двох, тож кінець має
+               відповідати «хто краще», а не лише «скільки хвиль». -->
+          <div class="score" id="veilScore" hidden></div>
           <div class="row">
             <button id="veilBtn" class="primary">Новий забіг</button>
             <button id="veilBtn2" hidden>Нова гра</button>
@@ -115,6 +118,7 @@
         <div class="boardbar">
           <label class="toggle"><input type="checkbox" id="showPath" checked> Шлях</label>
           <label class="toggle"><input type="checkbox" id="showRange" checked> Радіус</label>
+          <label class="toggle"><input type="checkbox" id="sfxToggle" checked> Звук</label>
           <div class="spacer"></div>
           <button id="btnVerify">Перевірити детермінізм</button>
         </div>
