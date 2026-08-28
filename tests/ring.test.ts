@@ -12,24 +12,26 @@ const ring = MAPS[RING_IDX];
 describe('Кільце', () => {
   it('мапа є, і в неї по трасі на кут', () => {
     expect(RING_IDX).toBeGreaterThanOrEqual(0);
-    expect(ring.roads, 'без roads це звичайна мапа').toHaveLength(2);
-    expect(ring.zones).toHaveLength(2);
+    expect(ring.roads, 'без roads це звичайна мапа').toHaveLength(4);
+    expect(Object.keys(ring.zones!).length, 'розкладка під кожну кількість гравців').toBeGreaterThan(1);
+    expect(ring.zones![2]).toHaveLength(2);
+    expect(ring.zones![4]).toHaveLength(4);
     expect(ring.fixedOnly).toBe(true);
   });
 
-  it('обидва кути мають маршрут однакової довжини', () => {
-    // інакше один гравець мав би довшу дорогу, і порівнювати нема з чим
+  it('усі кути мають маршрут однакової довжини', () => {
+    // інакше комусь дісталась би довша дорога, і порівнювати нема з чим
     const len = ring.roads!.map(r => buildRoute({ road: r } as any).length);
-    expect(len[0], `${len[0]} проти ${len[1]}`).toBe(len[1]);
+    expect(new Set(len).size, len.join(' проти ')).toBe(1);
     expect(len[0]).toBeGreaterThan(100);
   });
 
-  it('кути протилежні по діагоналі', () => {
-    const [a, b] = ring.roads!.map(r => r[0]);
-    expect(a[0] < GW / 2).toBe(true);
-    expect(b[0] > GW / 2).toBe(true);
-    expect(a[1] < 9).toBe(true);
-    expect(b[1] > 9).toBe(true);
+  it('кути стоять по різних чвертях, а перші двоє — по діагоналі', () => {
+    const c = ring.roads!.map(r => r[0]);
+    const quad = ([x, y]: number[]) => (x < GW / 2 ? 0 : 1) + (y < 9 ? 0 : 2);
+    expect(new Set(c.map(quad)).size, 'кути в одній чверті').toBe(4);
+    // удвох задіюються перші два — вони мусять бути навпроти
+    expect(quad(c[0]) + quad(c[2]), 'перша пара не по діагоналі').toBe(3);
   });
 
   it('крипи виходять по черзі з обох кутів', () => {
@@ -53,7 +55,7 @@ describe('Кільце', () => {
   it('гравець не може будувати в чужому куті', () => {
     const s: any = new Sim('RING-3', 100, 2, RING_IDX, MODE_FIXED);
     s.players.forEach((p: any) => (p.gold = 99999));
-    const z1 = ring.zones![1];
+    const z1 = ring.zones![2][1];
     // клітина глибоко в куті другого гравця
     let spot: any = null;
     for (let y = z1[1]; y < z1[1] + z1[3] && !spot; y++)
@@ -70,7 +72,7 @@ describe('Кільце', () => {
   it('у кожному куті вистачає місця під вежі', () => {
     const s: any = new Sim('RING-4', 100, 2, RING_IDX, MODE_FIXED);
     for (let p = 0; p < 2; p++) {
-      const z = ring.zones![p];
+      const z = ring.zones![2][p];
       let n = 0;
       for (let y = z[1]; y < z[1] + z[3]; y++)
         for (let x = z[0]; x < z[0] + z[2]; x++)
@@ -84,5 +86,60 @@ describe('Кільце', () => {
     expect(s.routes).toHaveLength(1);
     expect(s.inZone(0, 5, 5)).toBe(true);
     expect(s.inZone(1, 5, 5)).toBe(true);
+  });
+});
+
+/* ── учотирьох ────────────────────────────────────────────────────────
+   Мапа задумана на 2 або 4. Дошка ділиться на чверті, кожен кут шле свою
+   хвилю, а життя лишаються спільними — пропустив один, втратили всі. */
+describe('Кільце на чотирьох', () => {
+  const four = () => new Sim('RING4', 100, 4, RING_IDX, MODE_FIXED) as any;
+
+  it('чверті не перетинаються й покривають усе поле', () => {
+    const s = four();
+    const seen = new Map<string, number>();
+    for (let y = 0; y < 18; y++) for (let x = 0; x < GW; x++) {
+      let owners = 0;
+      for (let p = 0; p < 4; p++) if (s.inZone(p, x, y)) owners++;
+      seen.set(`${x},${y}`, owners);
+    }
+    const vals = [...seen.values()];
+    expect(Math.max(...vals), 'клітина належить двом гравцям').toBe(1);
+    expect(Math.min(...vals), 'клітина не належить нікому').toBe(1);
+  });
+
+  it('крипи виходять з усіх чотирьох кутів', () => {
+    const s = four();
+    for (let p = 0; p < 4; p++) s.apply({ t:'wave', p, seq: p + 1 });
+    for (let i = 0; i < 600 && s.creeps.length < 10; i++) s.step();
+    expect(new Set(s.creeps.map((c: any) => c.rt)).size, 'працюють не всі кути').toBe(4);
+  });
+
+  it('хвиля вчетверо більша, ніж на одного', () => {
+    // кожен кут шле свою: інакше вчотирьох ставили б учетверо більше веж
+    // проти тієї самої купки крипів
+    const one: any = new Sim('RING4', 100, 1, RING_IDX, MODE_FIXED);
+    const s = four();
+    one.startWave(); s.startWave();
+    expect(s.queue.length).toBe(one.queue.length * 4);
+  });
+
+  it('у кожного є де будувати', () => {
+    const s = four();
+    for (let p = 0; p < 4; p++) {
+      let n = 0;
+      for (let y = 0; y < 18; y++) for (let x = 0; x < GW; x++)
+        if (s.buildable(x, y) && s.inZone(p, x, y)) n++;
+      expect(n, `гравець ${p}: лише ${n} клітин`).toBeGreaterThan(30);
+    }
+  });
+
+  it('життя спільні: пропущений крип забирає в усіх одразу', () => {
+    const s = four();
+    const before = s.lives;
+    for (let p = 0; p < 4; p++) s.apply({ t:'wave', p, seq: p + 1 });
+    for (let i = 0; i < 40000 && s.lives === before; i++) s.step();
+    expect(s.lives).toBeLessThan(before);
+    expect(s.players.every((p: any) => p.gold >= 0)).toBe(true);
   });
 });

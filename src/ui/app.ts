@@ -1,5 +1,6 @@
 import Peer from 'peerjs';
 import { perkOf } from '../content/upgrades';
+import { botCommands } from '../sim/autoplay';
 import { sfx, sfxOn, setSfx, wakeSfx } from './sfx';
 import { TPS, SUB, GW, GH, idx, MODE_MAZE, MODE_FIXED } from '../sim/constants';
 import { Sim } from '../sim/sim';
@@ -7,7 +8,7 @@ import { MAPS } from '../content/maps';
 import { TOOLS, TOOL_BY_KEY, UPG, MAX_LVL, AIMS } from '../content/towers';
 import type { Cursor, CursorMode, Tool } from '../content/types';
 import { TIER_WAVE, TIER_NAME, tierAt } from '../content/types';
-import { LOADOUTS, LOADOUT_BY_KEY, PRIMARIES, SUPPORTS, DEFAULT_PRIMARY, DEFAULT_SUPPORT, toolsOf } from '../content/loadouts';
+import { COMBOS, LOADOUTS, LOADOUT_BY_KEY, PRIMARIES, SUPPORTS, DEFAULT_PRIMARY, DEFAULT_SUPPORT, toolsOf } from '../content/loadouts';
 import { buildTicks } from '../content/power';
 import { KIND_NAME } from '../content/waves';
 import { unpackCode } from '../net/codec';
@@ -89,6 +90,7 @@ const el = {
   webhookUrl: byId<HTMLInputElement>('webhookUrl'), webhookTest: byId<HTMLButtonElement>('btnWebhookTest'),
   webhookHint: byId('webhookHint'), downloadLog: byId<HTMLButtonElement>('btnDownloadLog'),
   duelField: byId('duelField'), duel: byId<HTMLSelectElement>('duelToggle'),
+  botField: byId('botField'), botSel: byId<HTMLSelectElement>('botSel'),
   sfxToggle: byId<HTMLInputElement>('sfxToggle'),
   logoLink: byId<HTMLAnchorElement>('logoLink'),
   verField: byId('verField'), verSel: byId<HTMLSelectElement>('verSel'),
@@ -364,12 +366,26 @@ const meId = () => {
   return (sim && sim.players && i < sim.players.length) ? i : 0;
 };
 
+/* Скільки місць займають боти. У дуелі їх немає: там у кожного своя
+   дошка, і «місця» ділити нема чого. */
+const botCount = () => (duelWanted() && !net.solo ? 0 : Math.max(0, Math.min(3, parseInt(el.botSel.value, 10) || 0)));
+/** Скільки гравців за дошкою: живі плюс боти, але не більше чотирьох. */
+let humans = 1, bots = 0;
+/** Чи цей номер гравця — бот. Живі йдуть першими. */
+const isBot = (i: number) => i >= humans;
+
 function boot(g?: number) {
   if (g !== undefined) gen = g;
-  const n = net.solo ? 1 : 2;
+  humans = net.solo ? 1 : 2;
+  bots = Math.min(botCount(), 4 - humans);
+  const n = humans + bots;
   const seed = el.seed.value || 'MAZE-01', diff = parseInt(el.diff.value, 10);
   const mapIdx = parseInt(el.mapSel.value, 10), mode = parseInt(el.modeSel.value, 10);
-  duelBoards = n > 1 && mode === MODE_FIXED && duelWanted();
+  /* Дуель — це ДВОЄ ЖИВИХ на своїх дошках, тож рахуються humans, а не
+     загальна кількість. Через n тут соло з ботами помилково йшло в дуель:
+     місць ставало чотири, умова спрацьовувала, і замість спільної дошки
+     гравець отримував «кожен на своїй лінії» сам із собою. */
+  duelBoards = humans > 1 && mode === MODE_FIXED && duelWanted();
 
   /* У дуелі кожен грає на сольній дошці (своя лінія, своє HP) — не на
      спільній двомісній. Обидві дошки на однаковому сіді, тож хвилі
@@ -378,6 +394,13 @@ function boot(g?: number) {
      дошці дістається мій набір, а дошці напарника — його: обидва клієнти
      рахують це зі свого боку й приходять до того самого. */
   const ars = arsenalPair().map(pair => toolsOf(pair[0], pair[1]));
+  /* Ботам набори роздаються по колу — детерміновано, тож обидва клієнти
+     дадуть однакові. Інакше вони всі грали б одним арсеналом, і половина
+     контенту в партії не з'являлась би взагалі. */
+  for (let i = ars.length; i < n; i++) {
+    const c = COMBOS[i % COMBOS.length];
+    ars.push(toolsOf(c.primary.key, c.support.key));
+  }
   sim = new Sim(seed, diff, duelBoards ? 1 : n, mapIdx, mode,
                 duelBoards ? [toolsOf(myPrimary, mySupport)] : ars);
   simMate = duelBoards ? new Sim(seed, diff, 1, mapIdx, mode, [toolsOf(matePrimary, mateSupport)]) : null;
@@ -392,7 +415,8 @@ function boot(g?: number) {
   el.pause.textContent = 'Пауза';
   el.veil.hidden = true;
   el.log.innerHTML = '';
-  say((n > 1 ? 'Кооп, гравець ' + (net.me + 1) + ' · ' : 'Забіг · ') + sim.map.name + ' · ' +
+  say((humans > 1 ? 'Кооп, гравець ' + (net.me + 1) + ' · ' : 'Забіг · ') + sim.map.name + ' · ' +
+      (bots > 0 ? 'ботів ' + bots + ' · ' : '') +
       (sim.mode === MODE_FIXED ? 'фіксований шлях' : 'лабіринт') + ' · сід ' + sim.seedStr +
       (duelBoards ? ' · кожен на своїй лінії' : ''), 'note');
   el.mapNote.textContent = sim.mode === MODE_FIXED
@@ -698,6 +722,7 @@ const readSetup = () => ({
   seed: el.seed.value || 'MAZE-01', diff: parseInt(el.diff.value, 10),
   map: parseInt(el.mapSel.value, 10), mode: parseInt(el.modeSel.value, 10),
   duel: duelAllowed() && duelWanted(),
+  bots: botCount(),
   /* Фракції — по індексу МЕРЕЖЕВОГО гравця, а не «моя/його». Так пара
      читається однаково в обох, і дошки збираються з того самого. */
   ars: arsenalPair(),
@@ -707,6 +732,7 @@ function writeSetup(s) {
   el.seed.value = s.seed; el.diff.value = String(s.diff);
   el.mapSel.value = String(s.map | 0); el.modeSel.value = String(s.mode | 0);
   el.duel.value = s.duel ? '1' : '0';
+  el.botSel.value = String(Math.max(0, Math.min(3, s.bots | 0)));
   if (s.ars && s.ars.length === 2) {
     /* Пара від хоста — остаточна. Свій вибір гість уже надіслав ident'ом
        і «Готовим», тож зазвичай це те саме; але якщо не встигло дійти,
@@ -736,6 +762,11 @@ function duelAllowed() {
 const duelWanted = () => el.duel.value === '1';
 function updateDuelAvailability() {
   el.duelField.classList.toggle('na', !duelAllowed());
+  /* У дуелі кожен на своїй дошці, ділити місця нема з ким — боти там
+     просто не мають куди сісти. */
+  const noBots = duelAllowed() && duelWanted();
+  el.botField.classList.toggle('na', noBots);
+  el.botSel.disabled = noBots;
 }
 
 /* Гість ніколи не крутить налаштування. Хост — тільки поки в лобі: під
@@ -914,6 +945,7 @@ addEventListener('pointerdown', wakeSfx, { once: true });
 el.mapSel.onchange = onHeaderChange;
 el.modeSel.onchange = onHeaderChange;
 el.duel.onchange = onHeaderChange;
+el.botSel.onchange = onHeaderChange;
 
 /* ── перевірка детермінізму ──────────────────────────────────────────── */
 el.verify.onclick = () => {
@@ -1262,7 +1294,21 @@ function frameBody(now) {
         simMate.step(mates);
         digestMate();
       } else {
-        sim.step(merged);
+        /* Команди ботів додаються ТУТ, а не йдуть мережею. Вони — чиста
+           функція від стану симуляції й номера тіку, тож кожен клієнт
+           порахує ті самі й у той самий тік. Нуль трафіку, і розвести
+           дошки вони не можуть у принципі.
+
+           Порядок теж не випадковий: боти йдуть після живих, а сам
+           sim.apply сортує все за (гравець, seq) — тож результат не
+           залежить від того, у якому порядку прилетіли пакети. */
+        let all = merged;
+        if (bots > 0) {
+          const auto: any[] = [];
+          for (let i = humans; i < humans + bots; i++) auto.push(...botCommands(sim, i));
+          if (auto.length) all = (merged || []).concat(auto);
+        }
+        sim.step(all);
       }
       digest();
       if (wired && sim.tick % 60 === 0) {
@@ -1394,6 +1440,10 @@ export function contribution(rows: { kills: number; dmg: number }[]): number[] {
   return rows.map(r => 0.5 * (r.kills / kAll) + 0.5 * (r.dmg / dAll));
 }
 
+/* Ім'я для рядка панелі. Живі беруть свій нік, боти — номер: інакше в
+   партії на чотирьох три рядки звалися б однаково. */
+function rowName(p: number) { return isBot(p) ? 'Бот ' + (p - humans + 1) : identName(p); }
+
 function resultRows() {
   const solo = net.solo;
   if (solo) return [{ p: 0, name: 'Ти', wave: sim.wave - 1, kills: sim.players[0].kills, dmg: sim.players[0].dmg, share: 1 }];
@@ -1403,7 +1453,7 @@ function resultRows() {
          kills: simMate ? simMate.players[0].kills : 0, dmg: simMate ? simMate.players[0].dmg : 0 }]
     : sim.players.map((pl: any, i: number) => ({ p: i, wave: sim.wave - 1, kills: pl.kills, dmg: pl.dmg }));
   const shares = contribution(rows);
-  return rows.map((r: any, i: number) => ({ ...r, name: identName(r.p), share: shares[i] }));
+  return rows.map((r: any, i: number) => ({ ...r, name: rowName(r.p), share: shares[i] }));
 }
 
 function resultHtml() {
@@ -1541,7 +1591,10 @@ function escapeHtml(s) { return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&l
    двох), у дуелі й соло — своє. Сортування за вбивствами — вже готовий
    порядок рядків, без окремого UI для сортування. */
 function rosterRows() {
-  if (net.solo) {
+  /* Панель показується не «коли є мережа», а коли за дошкою більше одного
+     гравця — боти теж гравці, і дивитись, як вони справляються, треба так
+     само. Раніше в соло з ботами вона просто не з'являлась. */
+  if (net.solo && sim.players.length < 2) {
     const p = sim.players[0];
     return [{ p:0, kills:p.kills, dmg:p.dmg, gold:p.gold, hp:sim.lives, towers:sim.towers.length }];
   }
@@ -1570,7 +1623,7 @@ let rosterShape = '';
 function renderRoster() {
   if (!sim) return;
   const rows = rosterRows();
-  const shape = rows.map((r, i) => [r.p, identName(r.p), identFor(r.p).color,
+  const shape = rows.map((r, i) => [r.p, rowName(r.p), identFor(r.p).color,
     loadoutOf(r.p).join('+'), i === 0 && rows.length > 1 && r.kills > 0 ? 'веде' : ''].join('')).join('');
 
   if (shape !== rosterShape) {
@@ -1585,7 +1638,8 @@ function renderRoster() {
       const num = (cls = '') => '<u class="' + cls + '"></u>';
       return '<div class="pRow' + (r.p === netP() ? ' me' : '') + '">' +
         '<span class="dot" style="background:' + C(paletteCss(id.color)) + '"></span>' +
-        '<b>' + escapeHtml(identName(r.p)) +
+        '<b>' + escapeHtml(rowName(r.p)) +
+          (isBot(r.p) ? '<i class="bot">бот</i>' : '') +
           (i === 0 && rows.length > 1 && r.kills > 0 ? '<i>веде</i>' : '') + '</b>' +
         '<span class="fx">' + facs + '</span>' +
         '<span class="nums">' + num() + num() + num() + num('gold') + num('hp') + '</span>' +
@@ -1609,17 +1663,20 @@ function renderRoster() {
    Викликається і зі зміни стану мережі, і з hud(): панель має з'явитись
    у мить з'єднання, а не на наступному кадрі анімації. */
 function syncPanels() {
-  const solo = net.solo;
-  el.playersTop.hidden = solo;
-  el.readout.classList.toggle('coop', !solo);
-  if (!solo && sim) renderRoster();
+  /* «Сам» — це одна людина, без ботів і без мережі. З ботами є кого
+     порівнювати, а в лобі панель має показувати тебе ще до старту
+     партії — тоді симуляція ще однокористувацька. */
+  const alone = net.solo && (!sim || sim.players.length < 2);
+  el.playersTop.hidden = alone;
+  el.readout.classList.toggle('coop', !alone);
+  if (!alone && sim) renderRoster();
 }
 
 /* Лічильник кадрів, а не тіків: у лобі симуляція стоїть, а діагностика
    потрібна саме там — інакше вона б завмерла до першої хвилі. */
 let diagIn = 0;
 function hud() {
-  const solo = net.solo;
+  const solo = net.solo && sim.players.length < 2;
   syncPanels();
   /* Вікно вибору закривається саме, щойно втрачає сенс: гравець узяв
      інший інструмент, або вежу вже знесли (у коопі — напарником). */
@@ -2091,7 +2148,7 @@ coopBlocked();     // одразу показати стан кооперати�
 el.coopDiag.textContent = 'вікно №' + net.myId + ' · версія ' + BUILD + ' — у обох має бути однакова';
 autoJoinFromLink();   // ?room=... у посиланні — після boot(), щоб не змішати solo зі стартом коопу
 window.CHOKEPOINT = {
-  contribution, fmt,
+  contribution, fmt, MAPS,
   get sim() { return sim; }, get ls() { return ls; }, get net() { return net; },
   get simMate() { return simMate; }, get duelBoards() { return duelBoards; },
   get inLobby() { return inLobby; },

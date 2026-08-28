@@ -50,6 +50,18 @@
           <option value="0">Спільна лінія</option>
         </select>
       </label>
+      <!-- Боти заповнюють вільні місця. Їхні рішення — чиста функція від
+           стану симуляції, тож кожен клієнт рахує їх сам: мережею вони не
+           йдуть і розвести дошки не можуть. -->
+      <label class="field" id="botField" title="Заповнити вільні місця ботами. Вони будують у своїй частці поля й грають за власні набори.">
+        Боти
+        <select id="botSel">
+          <option value="0" selected>немає</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+        </select>
+      </label>
       <label class="field faction" id="loadoutField" title="Основна дає хребет шкоди, допоміжна — контроль. Кожен гравець обирає свої.">
         Основна <select id="primarySel"></select>
         <span class="plus">+</span>

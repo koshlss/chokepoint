@@ -401,3 +401,7 @@ details.adv .body{padding-top:8px; display:flex; flex-direction:column; gap:7px}
    параметр гри, а те, ЯКУ гру відкрито. */
 .field.ver{margin-left:4px}
 .field.ver select{max-width:210px}
+
+/* Бот у панелі гравців позначається словом, а не кольором: кольори вже
+   зайняті під гравців, і ще один відтінок читався б як п'ятий учасник. */
+.pRow b i.bot{background:var(--line); color:var(--text-dim)}

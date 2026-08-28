@@ -264,9 +264,19 @@ class Sim {
 
   /* Кут гравця. На звичайних мапах кутів немає — там будують де завгодно,
      тож перевірка мовчки пропускає всіх. */
-  zoneOf(p) {
+  /** Набір зон під поточну кількість гравців; беремо найбільший, що не
+   *  перевищує її, — так трійка грає за розкладкою для двох. */
+  zoneSet() {
     const z = this.map.zones;
-    return (z && z.length) ? z[p % z.length] : null;
+    if (!z) return null;
+    const keys = Object.keys(z).map(Number).sort((a, b) => a - b);
+    let pick = null;
+    for (const k of keys) if (k <= this.nPlayers) pick = z[k];
+    return pick || z[keys[0]];
+  }
+  zoneOf(p) {
+    const set = this.zoneSet();
+    return (set && set.length) ? set[p % set.length] : null;
   }
   inZone(p, x, y) {
     const z = this.zoneOf(p);
@@ -278,9 +288,9 @@ class Sim {
      покриттю, інакше воно приписує гравцю чужу половину дошки, і крипи
      виходять удвічі міцнішими, ніж він здатен побити. */
   inAnyZone(x, y) {
-    const z = this.map.zones;
-    if (!z || !z.length) return true;
-    const n = Math.min(this.nPlayers, z.length);
+    const set = this.zoneSet();
+    if (!set || !set.length) return true;
+    const n = Math.min(this.nPlayers, set.length);
     for (let p = 0; p < n; p++) if (this.inZone(p, x, y)) return true;
     return false;
   }
