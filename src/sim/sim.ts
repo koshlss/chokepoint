@@ -53,6 +53,7 @@ class Sim {
   wave: any;
   waveVotes: any;
   holdPrep: boolean;
+  holdLeft: any;
   won: any;
 
   /* arsenals — по набору дозволених башт на гравця. Не входить у hash():
@@ -101,6 +102,7 @@ class Sim {
     this.prep        = TPS * BALANCE.prepFirst;
     this.waveVotes   = new Set();  // хто вже готовий прискорити поточну підготовку
     this.holdPrep    = false;      // дуель: не відлічувати підготовку, поки напарник у бою
+    this.holdLeft    = TPS * BALANCE.holdMax;   // і не довше, ніж це
     this.queue       = [];
     this.toSpawn     = 0;
     this.spawnGap    = 0;
@@ -482,7 +484,11 @@ class Sim {
          наступну хвилю раніше, з кожною хвилею відриваючись усе далі —
          і порівнювати два боки ставало нема з чим. Хто швидший, той
          однаково виграє: у нього більше часу на будівництво. */
-      if (!this.holdPrep && --this.prep <= 0) this.startWave();
+      /* Притримати відлік можна лише обмежений час: інакше хвилю
+         запускав би не годинник, а згода обох, і в заміряному забігу
+         вона приходила на 109-й секунді замість 50-ї. */
+      if (this.holdPrep && this.holdLeft > 0) this.holdLeft--;
+      else if (--this.prep <= 0) this.startWave();
     } else {
       if (this.toSpawn > 0) {
         if (--this.spawnCd <= 0) { this.spawnOne(); this.toSpawn--; this.spawnCd = this.spawnGap; }
@@ -493,6 +499,7 @@ class Sim {
         for (const t of this.towers) t.freshSpent = 0;
         this.phase = 0;
         this.prep  = TPS * BALANCE.prepAfter;
+        this.holdLeft = TPS * BALANCE.holdMax;
         this.waveVotes.clear();
       }
     }
