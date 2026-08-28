@@ -11,8 +11,13 @@
 
   <header class="masthead">
     <div class="brand">
-      <h1>Choke<span>point</span></h1>
+      <!-- Логотип веде на головну БЕЗ параметрів: це єдиний надійний спосіб
+           вийти з чужого лобі, не гадаючи, яку кнопку тиснути. -->
+      <a class="logo" id="logoLink" href="./"><h1>Choke<span>point</span></h1></a>
       <div class="sub">детермінований мейзинг-TD</div>
+      <!-- Перемикач версій. З'являється, лише якщо архів справді
+           опубліковано: на dev-сервері його немає, і поле не блимає. -->
+      <label class="field ver" id="verField" hidden>Версія <select id="verSel"></select></label>
     </div>
     <div class="seedbar">
       <label class="field">Сід <input type="text" id="seed" value="MAZE-01" spellcheck="false"></label>

@@ -118,6 +118,22 @@ window.addEventListener('load', async () => {
     }
     check('є панель підсумку', !!d.getElementById('veilScore'));
     check('є тумблер звуку', !!d.getElementById('sfxToggle'));
+
+    /* Логотип має вести на головну БЕЗ параметрів: із чужого посилання на
+       лобі «?room=…» лишається в адресі й тягне назад при кожному
+       перезавантаженні — вийти з нього не було чим. */
+    const logo = d.getElementById('logoLink');
+    check('логотип є посиланням', !!logo && logo.tagName === 'A');
+    if (logo) {
+      check('логотип веде без параметрів', logo.href.indexOf('?') < 0, logo.getAttribute('href'));
+      check('логотип не тягне в лобі', logo.href.indexOf('room') < 0);
+      check('логотип не веде в архівну версію', logo.href.indexOf('/v/') < 0);
+    }
+    /* Перемикач версій з'являється, лише якщо архів опубліковано. На
+       dev-сервері архіву немає, тож поле мусить лишатись схованим — і не
+       блимати порожнім списком. */
+    check('поле версій є в розмітці', !!d.getElementById('verField'));
+    check('без архіву поле версій сховане', d.getElementById('verField').hidden === true);
   }
 
   /* 0д. Панель гравців: у соло її бути НЕ має — рядок на одного лише

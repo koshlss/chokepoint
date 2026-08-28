@@ -90,6 +90,8 @@ const el = {
   webhookHint: byId('webhookHint'), downloadLog: byId<HTMLButtonElement>('btnDownloadLog'),
   duelField: byId('duelField'), duel: byId<HTMLSelectElement>('duelToggle'),
   sfxToggle: byId<HTMLInputElement>('sfxToggle'),
+  logoLink: byId<HTMLAnchorElement>('logoLink'),
+  verField: byId('verField'), verSel: byId<HTMLSelectElement>('verSel'),
   upgPick: byId('upgPick'), upgTitle: byId('upgTitle'), upgCost: byId('upgCost'), upgOpts: byId('upgOpts'),
   mateBoard: byId('mateBoard'),
   mbWave: byId('mbWave'), mbLives: byId('mbLives'), mbGold: byId('mbGold'),
@@ -873,6 +875,36 @@ el.wave_.onclick = () => enqueue({ t:'wave' });
 el.restart.onclick = hostNewGame;
 el.seed.onchange = onHeaderChange;
 el.diff.onchange = onHeaderChange;
+/* ── головна й архів версій ───────────────────────────────────────────
+   Логотип веде на базовий шлях БЕЗ параметрів. Це не косметика: коли
+   відкриваєш чуже посилання на лобі, «?room=…» лишається в адресі й
+   тягне назад у те саме лобі при кожному перезавантаженні — вийти з
+   нього не було чим. Тепер є.
+
+   Поруч — перемикач версій. Кожен випуск зібраний у свою підпапку, тож
+   можна відкрити будь-яку минулу й порівняти. Список береться з архіву,
+   і якщо архіву немає (dev-сервер), поле просто не з'являється. */
+const HOME = import.meta.env.BASE_URL || './';
+el.logoLink.href = HOME;
+
+fetch(HOME + 'v/index.json')
+  .then(r => (r.ok ? r.json() : null))
+  .then(m => {
+    if (!m || !m.versions || !m.versions.length) return;
+    // без регулярки: зворотні скісні в ній уже двічі гинули при правках
+    const at = location.pathname.indexOf('/v/');
+    const here = at >= 0 ? location.pathname.slice(at + 3).split('/')[0] : '';
+    const opts = [{ v: m.current, title: 'остання', url: HOME }]
+      .concat(m.versions.map((x: any) => ({ ...x, url: HOME + 'v/' + x.v + '/' })));
+    el.verSel.innerHTML = opts.map(o =>
+      '<option value="' + escapeHtml(o.url) + '">' + escapeHtml(o.v) +
+      (o.title ? ' — ' + escapeHtml(String(o.title).slice(0, 46)) : '') + '</option>').join('');
+    el.verSel.value = here ? HOME + 'v/' + here + '/' : HOME;
+    el.verSel.onchange = () => { location.href = el.verSel.value; };
+    el.verField.hidden = false;
+  })
+  .catch(() => {});
+
 el.sfxToggle.checked = sfxOn();
 el.sfxToggle.onchange = () => { setSfx(el.sfxToggle.checked); if (el.sfxToggle.checked) { wakeSfx(); sfx('build'); } };
 /* Браузер не дасть завести звук до першої дії гравця, тож чіпляємось за

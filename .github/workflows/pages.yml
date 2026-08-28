@@ -23,6 +23,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # архів версій збирається з минулих комітів, тож потрібна вся
+          # історія, а не лише останній зріз
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -36,6 +40,10 @@ jobs:
       - run: npm test
 
       - run: npm run build
+      # Кожен випуск лягає в свою підпапку dist/v/<версія>/, щоб минулі
+      # версії можна було відкрити й порівняти. Зламана стара версія не
+      # валить викочування — скрипт її просто пропускає.
+      - run: npm run archive
 
       - uses: actions/configure-pages@v5
 

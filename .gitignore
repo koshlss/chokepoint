@@ -15,3 +15,6 @@ index.html.mono
 mpq-extract*.ps1
 mpq-extract*.html
 burbenog-extract/
+
+# робочий каталог, у якому збирається архів версій
+.versions-wt/

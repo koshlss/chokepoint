@@ -391,3 +391,13 @@ details.adv .body{padding-top:8px; display:flex; flex-direction:column; gap:7px}
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .score .sRow.me{background:#20180B; color:var(--text)}
 .score .sRow.me b{color:var(--brass)}
+
+/* Логотип — посилання на головну без параметрів: єдиний надійний спосіб
+   вийти з чужого лобі. Виглядає так само, як виглядав. */
+.logo{text-decoration:none; color:inherit; display:inline-block}
+.logo:hover h1 span{color:var(--text)}
+.logo:focus-visible{outline:2px solid var(--brass); outline-offset:3px}
+/* Перемикач версій живе при назві, а не серед налаштувань партії: це не
+   параметр гри, а те, ЯКУ гру відкрито. */
+.field.ver{margin-left:4px}
+.field.ver select{max-width:210px}
