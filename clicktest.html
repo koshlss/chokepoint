@@ -116,6 +116,20 @@ window.addEventListener('load', async () => {
       check('від десяти мільйонів скорочується', fmt(10523491) === '10.52М', fmt(10523491));
       check('нуль лишається нулем', fmt(0) === '0', fmt(0));
     }
+    /* Межі половин малювались із map.zones як із масиву, а він таблиця за
+       кількістю гравців — цикл не виконувався жодного разу, і гравець не
+       бачив, де йому взагалі можна ставити. */
+    const ringIdx = w.CHOKEPOINT.MAPS.findIndex(m => m.roads);
+    if (ringIdx >= 0) {
+      const sim2 = new w.CHOKEPOINT.Sim('ZN', 100, 2, ringIdx, 1);
+      check('набір зон береться за кількістю гравців', sim2.zoneSet() && sim2.zoneSet().length === 2,
+            sim2.zoneSet() ? sim2.zoneSet().length + ' зон' : 'немає');
+      check('удвох кути по діагоналі', sim2.laneOf(0) === 0 && sim2.laneOf(1) === 2,
+            sim2.laneOf(0) + ' і ' + sim2.laneOf(1));
+      const s4 = new w.CHOKEPOINT.Sim('ZN', 100, 4, ringIdx, 1);
+      check('учотирьох задіяні всі кути', [0,1,2,3].every(i => s4.laneOf(i) === i));
+      check('учотирьох чверті', s4.zoneSet().length === 4);
+    }
     check('є панель підсумку', !!d.getElementById('veilScore'));
     check('є тумблер звуку', !!d.getElementById('sfxToggle'));
 

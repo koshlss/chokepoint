@@ -1,3 +1,3 @@
-const BUILD = '2026-08-26c';
+const BUILD = '2026-08-26d';
 
 export { BUILD };

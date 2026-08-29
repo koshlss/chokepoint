@@ -1963,8 +1963,12 @@ function drawOnePath(route: number[]) {
 /* Кути гравців. Без них не видно, де взагалі можна ставити: спроба
    поставити в чужому куті просто відхилялась би без пояснення. */
 function drawZones() {
-  const zones = sim.map.zones;
-  if (!zones || !zones.length) return;
+  /* Набір зон беремо в самої симуляції: у мапі вони лежать таблицею за
+     кількістю гравців, а не масивом. Через це малювання мовчки нічого не
+     робило — zones.length був undefined, і цикл не виконувався жодного
+     разу: гравець не бачив своєї межі взагалі. */
+  const zones = sim.zoneSet();
+  if (!zones || zones.length < 2) return;   // одному межі показувати нема сенсу
   for (let p = 0; p < zones.length; p++) {
     const [zx, zy, zw, zh] = zones[p];
     const mine = p === meId();

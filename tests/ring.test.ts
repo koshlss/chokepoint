@@ -34,13 +34,36 @@ describe('Кільце', () => {
     expect(quad(c[0]) + quad(c[2]), 'перша пара не по діагоналі').toBe(3);
   });
 
+  /* Кути в мапі йдуть за годинниковою, тож «перші N» для двох дало б два
+     СУСІДНІ — обидва вгорі. Саме так і сталось: обидва потоки виходили в
+     половині одного гравця, а другий не мав чого стріляти. */
+  it('удвох кути беруться по діагоналі, а не поруч', () => {
+    const s: any = new Sim('RING-D', 100, 2, RING_IDX, MODE_FIXED);
+    const lanes = [s.laneOf(0), s.laneOf(1)];
+    expect(lanes, 'кути мають бути навпроти').toEqual([0, 2]);
+    const half = (rt: number) => (ring.roads![rt][0][1] < 9 ? 'верх' : 'низ');
+    expect(half(lanes[0])).not.toBe(half(lanes[1]));
+  });
+
+  it('крипи виходять у половині СВОГО гравця', () => {
+    const s: any = new Sim('RING-H', 100, 2, RING_IDX, MODE_FIXED);
+    s.apply({ t:'wave', p:0, seq:1 }); s.apply({ t:'wave', p:1, seq:2 });
+    for (let i = 0; i < 600 && s.creeps.length < 8; i++) s.step();
+    const up = s.creeps.filter((c: any) => c.rt === 0);
+    const down = s.creeps.filter((c: any) => c.rt === 2);
+    expect(up.length, 'з верхнього кута не вийшло нікого').toBeGreaterThan(0);
+    expect(down.length, 'з нижнього кута не вийшло нікого').toBeGreaterThan(0);
+    for (const c of up) expect(s.inZone(0, c.tx, c.ty), 'крип гравця 0 не в його половині').toBe(true);
+    for (const c of down) expect(s.inZone(1, c.tx, c.ty), 'крип гравця 1 не в його половині').toBe(true);
+  });
+
   it('крипи виходять по черзі з обох кутів', () => {
     const s: any = new Sim('RING-1', 100, 2, RING_IDX, MODE_FIXED);
     s.apply({ t:'wave', p:0, seq:1 });
     s.apply({ t:'wave', p:1, seq:2 });
     for (let i = 0; i < 400 && s.creeps.length < 6; i++) s.step();
-    const used = new Set(s.creeps.map((c: any) => c.rt));
-    expect(used.size, 'обидва кути мусять давати крипів').toBe(2);
+    const used = [...new Set(s.creeps.map((c: any) => c.rt))].sort();
+    expect(used, 'обидва кути мусять давати крипів, і саме діагональні').toEqual([0, 2]);
   });
 
   it('крипи з обох кутів доходять до центру й забирають спільні життя', () => {
@@ -64,7 +87,7 @@ describe('Кільце', () => {
     expect(spot, 'у другому куті мусить бути де будувати').toBeTruthy();
     s.apply({ t:'build', p:0, seq:1, x:spot.x, y:spot.y, k:'arrow' });
     expect(s.towerAt(spot.x, spot.y), 'чужий кут має бути закритий').toBeNull();
-    expect(s.events.some((e: any) => e.e === 'deny' && e.why === 'не твій кут')).toBe(true);
+    expect(s.events.some((e: any) => e.e === 'deny' && e.why === 'не твоя частина дошки')).toBe(true);
     s.apply({ t:'build', p:1, seq:2, x:spot.x, y:spot.y, k:'arrow' });
     expect(s.towerAt(spot.x, spot.y), 'у своєму куті — можна').toBeTruthy();
   });

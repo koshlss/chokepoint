@@ -319,7 +319,7 @@ class Sim {
     if (cmd.t === 'build') {
       const tool = TOOL_BY_KEY[cmd.k];
       if (!tool || !this.buildable(cmd.x, cmd.y)) { this.events.push({ e:'deny', p:cmd.p, why:'зайнято' }); return; }
-      if (!this.inZone(cmd.p, cmd.x, cmd.y)) { this.events.push({ e:'deny', p:cmd.p, why:'не твій кут' }); return; }
+      if (!this.inZone(cmd.p, cmd.x, cmd.y)) { this.events.push({ e:'deny', p:cmd.p, why:'не твоя частина дошки' }); return; }
       if (!this.allows(cmd.p, cmd.k)) {
         // причину розрізняємо, бо це різні поради гравцю: одне — «не твоя
         // фракція», інше — «ще зарано, чекай хвилі»
@@ -449,6 +449,16 @@ class Sim {
   /** Скільки кутів працює: по одному на гравця, але не більше, ніж мапа має. */
   activeRoutes() { return Math.min(this.nPlayers, this.routes.length); }
 
+  /* Який кут дістається гравцю. Кути в мапі йдуть за годинниковою, тож
+     «перші N» для двох дало б два СУСІДНІ — обидва вгорі, і обидва потоки
+     виходили б у половині одного гравця. Розкладаємо їх рівномірно: удвох
+     це діагональ, учотирьох — усі чотири. */
+  laneOf(p) {
+    const n = this.activeRoutes();
+    if (n <= 1) return 0;
+    return (p % n) * ((this.routes.length / n) | 0);
+  }
+
   spawnOne() {
     const s = this.queue.shift();
     if (!s) return;
@@ -459,7 +469,7 @@ class Sim {
     /* На кільцевих мапах крипи виходять по черзі з КОЖНОГО кута — саме
        тому повз вежі кожного гравця проходять усі. Черга йде за
        порядковим номером крипа, тож вона однакова в усіх клієнтів. */
-    const rt = this.activeRoutes() > 1 ? (this.nextCreepId - 1) % this.activeRoutes() : 0;
+    const rt = this.laneOf(this.nextCreepId - 1);
     const route = this.routes[rt];
     const sx = route[0] % GW, sy = (route[0] / GW) | 0;
     const c = {
