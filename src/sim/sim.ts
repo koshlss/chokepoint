@@ -14,6 +14,10 @@ import { choicesAt, statsFor, perkCode } from '../content/upgrades';
    відв'язує цінність морозу від щільності траси. */
 const SLOW_IMMUNE = 20;
 
+/* Скільки дій можна відкотити. Три — це «я щойно клацнув не туди», а не
+   можливість переграти всю підготовку наново. */
+const UNDO_DEPTH = 3;
+
 class Sim {
   arsenals: Set<string>[] | null;
   blocked: any;
@@ -87,7 +91,8 @@ class Sim {
     this.frozen  = false;   // пауза живе всередині симуляції, тому будувати можна
 
     this.players = [];
-    for (let i = 0; i < this.nPlayers; i++) this.players.push({ id:i, gold:BALANCE.startGold, dmg:0, kills:0 });
+    for (let i = 0; i < this.nPlayers; i++)
+      this.players.push({ id:i, gold:BALANCE.startGold, dmg:0, kills:0, undo: [] as any[] });
 
     this.blocked = new Uint8Array(GW * GH);
     this.flow    = new Int32Array(GW * GH);
@@ -309,6 +314,62 @@ class Sim {
     return this.blocked[i] === 0;
   }
 
+  /* ── СКАСУВАННЯ ОСТАННІХ ДІЙ ─────────────────────────────────────────
+     Відмотати саму симуляцію не можна: вона детермінована й іде вперед.
+     Тому скасування — це не «повернутись у минулий стан», а ЗВОРОТНА ДІЯ,
+     що приводить дошку до того самого вигляду.
+
+     Записуємо рівно стільки, щоб дію можна було обернути точно: для
+     будівництва — де й почім, для прокачки — скільки коштувала, для
+     зносу — уся вежа цілком, разом із рівнем, гілками й ціллю.
+
+     Стек живе в гравці й входить у хеш кількістю, тож розбіжність між
+     клієнтами не пройде непоміченою. Глибина навмисно мала: скасування
+     тут — виправлення помилки, а не машина часу. */
+  remember(pl, rec) {
+    pl.undo.push(rec);
+    while (pl.undo.length > UNDO_DEPTH) pl.undo.shift();
+  }
+
+  /** Скільки дій цей гравець ще може скасувати. */
+  undoLeft(p) { const pl = this.players[p]; return pl ? pl.undo.length : 0; }
+
+  undoLast(p) {
+    const pl = this.players[p];
+    if (!pl || !pl.undo.length) { this.events.push({ e:'deny', p, why:'нема чого скасовувати' }); return; }
+    const r = pl.undo.pop();
+
+    if (r.k === 'build') {
+      const n = this.towers.findIndex(t => t.x === r.x && t.y === r.y && t.owner === p);
+      if (n < 0) return;
+      this.towers.splice(n, 1);
+      this.blocked[idx(r.x, r.y)] = 0;
+      if (this.mode === MODE_MAZE) this.recomputeFlow();
+      // повертаємо рівно те, що заплатили: це скасування, а не продаж
+      pl.gold += r.cost; pl.spent = 0;
+    } else if (r.k === 'up') {
+      const t = this.towerAt(r.x, r.y);
+      if (!t || t.lvl <= 1) return;
+      t.lvl--; t.up.pop();
+      t.spent -= r.cost; t.freshSpent = Math.max(0, t.freshSpent - r.cost);
+      t.build = 0;
+      this.recalcTower(t);
+      pl.gold += r.cost;
+    } else if (r.k === 'raze') {
+      if (!this.buildable(r.x, r.y)) return;         // місце вже зайняли
+      const t: any = { ...r.snap, cd:0, ax:1, ay:0, up: r.snap.up.slice() };
+      this.recalcTower(t);
+      this.towers.push(t);
+      this.blocked[idx(r.x, r.y)] = 1;
+      if (this.mode === MODE_MAZE) this.recomputeFlow();
+      // повернуте за знос забираємо назад у того, кому воно дісталось
+      const owner = this.players[r.snap.owner];
+      if (owner) owner.gold -= r.back;
+    }
+    this.retargetAll();
+    this.events.push({ e:'undo', p, k:r.k, x:r.x, y:r.y, left: pl.undo.length });
+  }
+
   /* ── команди ─────────────────────────────────────────────────────────
      Єдина точка входу для дій гравця. Для мережевої гри сюди приходять
      чужі команди — більше нічого міняти не треба. */
@@ -349,6 +410,7 @@ class Sim {
                    build:buildTicks(tool.cost), up:[] as string[] };
       this.recalcTower(nt);
       this.towers.push(nt);
+      this.remember(p, { k:'build', x:cmd.x, y:cmd.y, cost:tool.cost });
       this.events.push({ e:'build', p:cmd.p, x:cmd.x, y:cmd.y, k:tool.key, cost:tool.cost });
       this.retargetAll();
 
@@ -361,6 +423,11 @@ class Sim {
       if (this.mode === MODE_MAZE) this.recomputeFlow();
       const back = this.refund(t);
       this.players[t.owner].gold += back;      // гроші вертаються власнику, не тому, хто зніс
+      /* Знесену вежу запам'ятовуємо цілком: щоб повернути її такою ж,
+         потрібні і рівень, і обрані гілки, і ціль, і вкладене. */
+      this.remember(p, { k:'raze', x:cmd.x, y:cmd.y, back,
+        snap: { x:t.x, y:t.y, k:t.k, owner:t.owner, lvl:t.lvl, aim:t.aim,
+                spent:t.spent, freshSpent:t.freshSpent, up:t.up.slice(), build:t.build } });
       this.events.push({ e:'raze', p:cmd.p, x:cmd.x, y:cmd.y, gold:back, full:t.freshSpent >= t.spent });
       this.retargetAll();
 
@@ -383,7 +450,11 @@ class Sim {
       this.recalcTower(t);
       // прокачка теж займає час, і теж пропорційно вкладеному
       t.build = buildTicks(cost);
+      this.remember(p, { k:'up', x:cmd.x, y:cmd.y, cost });
       this.events.push({ e:'up', p:cmd.p, x:cmd.x, y:cmd.y, lvl:t.lvl, k:cmd.k || '' });
+
+    } else if (cmd.t === 'undo') {
+      this.undoLast(cmd.p);
 
     } else if (cmd.t === 'aim') {
       const t = this.towerAt(cmd.x, cmd.y);
@@ -425,6 +496,13 @@ class Sim {
 
   startWave() {
     for (const t of this.towers) t.freshSpent = 0;  // межа хвилі знімає повне повернення
+    /* Голоси скидаються тут, а не коли хвилю добили: інакше кнопка весь
+       бій лишалась у стані «чекаю голосів» від попередньої підготовки, і
+       після старту її не було чим скинути. */
+    this.waveVotes.clear();
+    /* Скасувати можна лише те, що зроблено В ЦІЙ підготовці. Інакше
+       гравець побачив би хвилю й відкотив рішення заднім числом. */
+    for (const pl of this.players) pl.undo.length = 0;
     this.wave++;
     const s = waveSpec(this.wave);
     this.spec  = s;
@@ -833,7 +911,7 @@ class Sim {
     // непоміченою, поки не з'являться перші крипи
     mix(this.mapIdx); mix(this.mode); mix(this.diff); mix(this.cov);
     mix(this.tick); mix(this.lives); mix(this.wave); mix(this.rng); mix(this.waveVotes.size);
-    for (const p of this.players) { mix(p.gold); mix(p.dmg); mix(p.kills); }
+    for (const p of this.players) { mix(p.gold); mix(p.dmg); mix(p.kills); mix(p.undo.length); }
     for (const t of this.towers) { mix(t.x); mix(t.y); mix(t.cd); mix(t.lvl); mix(t.aim); mix(t.build); mix(t.k.charCodeAt(0));
       for (const u of t.up) mix(perkCode(u)); }   // гілки міняють характеристики, тож теж у хеш
     for (const c of this.creeps) { mix(c.id); mix(c.x); mix(c.y); mix(c.hp); mix(c.slowT); }

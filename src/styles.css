@@ -405,3 +405,16 @@ details.adv .body{padding-top:8px; display:flex; flex-direction:column; gap:7px}
 /* Бот у панелі гравців позначається словом, а не кольором: кольори вже
    зайняті під гравців, і ще один відтінок читався б як п'ятий учасник. */
 .pRow b i.bot{background:var(--line); color:var(--text-dim)}
+
+/* Відлік до хвилі — поруч із кнопкою, власною клітинкою сталої ширини.
+   У самій кнопці він мінявся щосекунди разом із її шириною, і сусідні
+   кнопки стрибали; тут він так само перед очима, але нічого не рухає. */
+.waveClock{font-family:var(--mono); font-size:12.5px; font-variant-numeric:tabular-nums;
+  color:var(--text-dim); min-width:84px; text-align:center; white-space:nowrap}
+.waveClock.soon{color:var(--brass)}
+.waveClock.hold{color:var(--steel)}
+
+/* Скасування — разова дія, а не інструмент: воно нічого не «тримає в
+   руці», тож і не має позначки вибраного. */
+.tool.undo{border-color:var(--line)}
+.tool.undo .cost{color:var(--steel)}

@@ -130,6 +130,19 @@ window.addEventListener('load', async () => {
       check('учотирьох задіяні всі кути', [0,1,2,3].every(i => s4.laneOf(i) === i));
       check('учотирьох чверті', s4.zoneSet().length === 4);
     }
+    /* За замовчуванням легкий рівень — саме на ньому видно радіус, а без
+       нього перша партія перетворюється на вгадування. */
+    check('за замовчуванням легко', d.getElementById('diff').value === '70', d.getElementById('diff').value);
+    check('радіус одразу увімкнено', d.getElementById('showRange').checked);
+
+    /* Відлік винесено з кнопки в сусідній годинник: у самій кнопці він
+       мінявся щосекунди разом із її шириною, і кнопки поруч стрибали. */
+    check('годинник хвилі є окремо від кнопки', !!d.getElementById('waveClock'));
+    check('на кнопці немає секунд', d.getElementById('btnWave').textContent.indexOf(' с') < 0,
+          d.getElementById('btnWave').textContent);
+    const clockTxt = d.getElementById('waveClock').textContent;
+    check('годинник показує секунди', clockTxt.indexOf(' с') > 0 && parseInt(clockTxt, 10) > 0, clockTxt);
+
     check('є панель підсумку', !!d.getElementById('veilScore'));
     check('є тумблер звуку', !!d.getElementById('sfxToggle'));
 
@@ -308,7 +321,35 @@ window.addEventListener('load', async () => {
     if (empty) { at(empty.x, empty.y); check('на порожній клітині підказки немає', await until(() => tip.hidden === true)); }
     cv.dispatchEvent(new w.MouseEvent('mouseleave', { bubbles:true }));
 
-    /* 0з. Вибір гілки прокачки. Ставимо вежу, якій є з чого обирати,
+      /* 0є. Скасування останніх дій. Відмотати симуляцію не можна — вона
+           детермінована й іде вперед, — тож це ЗВОРОТНА дія, і головне
+           тут, щоб золото поверталось рівно те саме. */
+    {
+      const un = d.getElementById('btnUndo');
+      check('є кнопка скасування', !!un);
+      if (un) {
+        sim.players[0].gold = 5000;
+        let spot = null;
+        for (let y = 0; y < 18 && !spot; y++) for (let x = 0; x < 26; x++)
+          if (sim.buildable(x, y) && !sim.towerAt(x, y)) { spot = { x, y }; break; }
+        const goldBefore = sim.players[0].gold, twBefore = sim.towers.length;
+        const key = [...d.querySelectorAll('#rail .tool')].map(b => b.dataset.key).find(Boolean);
+        sim.apply({ t:'build', p:0, seq:0, x:spot.x, y:spot.y, k:key });
+        check('вежа поставлена для перевірки', sim.towers.length === twBefore + 1);
+        check('кнопка скасування ожила', await until(() => un.disabled === false));
+        un.click();
+        check('скасування прибрало вежу', await until(() => sim.towers.length === twBefore));
+        check('золото повернулось повністю', sim.players[0].gold === goldBefore,
+              goldBefore + ' проти ' + sim.players[0].gold);
+        // у стеку могло лишитись зроблене попередніми кроками — доганяємо
+        for (let i = 0; i < 4 && sim.undoLeft(0) > 0; i++) { un.click(); await until(() => true, 120); }
+        check('без чого скасовувати кнопка вимкнена',
+              await until(() => sim.undoLeft(0) === 0 && un.disabled === true),
+              'у стеку ще ' + sim.undoLeft(0));
+      }
+    }
+
+  /* 0з. Вибір гілки прокачки. Ставимо вежу, якій є з чого обирати,
            і перевіряємо, що вікно з'являється, а Esc його прибирає. */
     let spot2 = null;
     for (let y = 0; y < 18 && !spot2; y++) for (let x = 0; x < 26; x++)

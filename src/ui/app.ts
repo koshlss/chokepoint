@@ -73,7 +73,7 @@ const el = {
   veil:  byId('veil'),   veilT: byId('veilTitle'),
   veilX: byId('veilText'), veilB: byId<HTMLButtonElement>('veilBtn'),
   veilB2: byId<HTMLButtonElement>('veilBtn2'), veilReady: byId('veilReady'),
-  wave_: byId<HTMLButtonElement>('btnWave'), pause: byId<HTMLButtonElement>('btnPause'),
+  wave_: byId<HTMLButtonElement>('btnWave'), waveClock: byId('waveClock'), pause: byId<HTMLButtonElement>('btnPause'),
   speed: byId<HTMLButtonElement>('btnSpeed'), verify: byId<HTMLButtonElement>('btnVerify'),
   seed:  byId<HTMLInputElement>('seed'),   diff:  byId<HTMLSelectElement>('diff'),
   showPath: byId<HTMLInputElement>('showPath'), showRange: byId<HTMLInputElement>('showRange'),
@@ -238,7 +238,10 @@ function rangeShown(): boolean {
 function refreshRangeOption() {
   const on = rangeShown();
   el.showRange.closest('label')!.hidden = !on;
-  if (!on) el.showRange.checked = false;
+  /* Раніше галочка лише знімалась і назад не поверталась: перейшовши з
+     норми на легкий, гравець отримував доступний, але вимкнений радіус —
+     і мусив здогадатись увімкнути його сам. */
+  el.showRange.checked = on;
 }
 
 let myPrimary = validRole(localStorage.getItem('cp_primary') || '', 'primary', DEFAULT_PRIMARY);
@@ -497,10 +500,30 @@ function drawRail() {
     b.onclick = () => { tool = x.id; refreshRail(); };
     el.rail.appendChild(b);
   }
+
+  /* Скасування — не інструмент у руці, а разова дія, тож і кнопка інша:
+     вона нічого не «вибирає», а виконує. Клавіша Z — там же, де вона в
+     будь-якому редакторі. */
+  const un = document.createElement('button');
+  un.className = 'tool undo';
+  un.id = 'btnUndo';
+  un.innerHTML = '<span class="key">Z</span><span class="nm"><b>Скасувати</b>' +
+                 '<i>Останні дії цієї підготовки. Хвиля закриває минуле.</i><u></u></span>' +
+                 '<span class="cost">↶</span>';
+  un.onclick = () => enqueue({ t:'undo' });
+  el.rail.appendChild(un);
+
   refreshRail();
 }
 function refreshRail() {
   const gold = sim.players[meId()].gold;
+  const un = document.getElementById('btnUndo') as HTMLButtonElement | null;
+  if (un) {
+    const left = sim.undoLeft(meId());
+    un.disabled = left === 0;
+    const sub = un.querySelector('u');
+    if (sub) setText(sub as HTMLElement, left ? 'лишилось ' + left + ' із 3' : 'нема чого скасовувати');
+  }
   const open = sim.tier();
   el.rail.querySelectorAll<HTMLElement>('.tierHead').forEach(h => {
     const tier = +h.dataset.tier!;
@@ -675,6 +698,7 @@ addEventListener('keydown', e => {
   // реєстру — інакше «2» означало б різні башти в різних фракціях
   if (k >= '1' && k <= '9') { const t = myTools()[+k - 1]; if (t) { tool = t; refreshRail(); } }
   else if (k === '0') { tool = 'raze'; refreshRail(); }
+  else if (k === 'z') enqueue({ t:'undo' });
   else if (k === 'u') { tool = 'up'; refreshRail(); }
   else if (k === 't') { tool = 'aim'; refreshRail(); }
   /* Esc робить ОДНУ дію за раз: якщо відкрито вибір гілки — закриває
@@ -1214,11 +1238,30 @@ function autoJoinFromLink() {
    мусять іти далі. На детермінізм це не впливає — симуляція живе на
    тіках, а не на часі. */
 const HIDDEN_MS = 16;
+/* Страховка на випадок, коли кадри не йдуть, а вкладка вважається
+   видимою. Так буває, коли вікно перекрите іншим, згорнуте не до кінця
+   або браузер просто вирішив притримати композицію: document.hidden
+   лишається false, а requestAnimationFrame мовчить. Заміряно прямо в
+   грі — нуль кадрів за півтори секунди при visibilityState «visible».
+
+   Наслідок для гравця виглядав як зламана кнопка: натискання лягало в
+   чергу лок-степу й не застосовувалось, бо симуляція не робила жодного
+   тіку, а показники оновлювались ривками.
+
+   Тому поруч із кадром завжди зводиться таймер, і хто перший — той і
+   жене цей кадр. Лічильник поколінь гарантує, що кадр буде рівно один. */
+const BACKUP_MS = 60;
+let frameGen = 0;
 let frameErrTold = false;
 function schedule(fn: (now: number) => void): void {
-  if (typeof document !== 'undefined' && document.hidden)
-    setTimeout(() => fn(performance.now()), HIDDEN_MS);
-  else requestAnimationFrame(fn);
+  const my = ++frameGen;
+  const run = (now: number) => { if (my !== frameGen) return; frameGen++; fn(now); };
+  if (typeof document !== 'undefined' && document.hidden) {
+    setTimeout(() => run(performance.now()), HIDDEN_MS);
+    return;
+  }
+  requestAnimationFrame(run);
+  setTimeout(() => run(performance.now()), BACKUP_MS);
 }
 function frame(now: number) {
   try { frameBody(now); }
@@ -1398,6 +1441,10 @@ function digest() {
       if (e.p === meId() && e.gold) fx.push({ t:'text', x:e.x, y:e.y, life:34, max:34, c:C('--brass'), s:'+' + fmt(e.gold) });
     }
     else if (e.e === 'build') { if (e.p === meId()) { stats.built++; sfx('build'); } }
+    else if (e.e === 'undo')  { if (e.p === meId()) {
+      const що = e.k === 'build' ? 'будівництво' : e.k === 'up' ? 'прокачку' : 'знос';
+      say('Скасовано ' + що + (e.left ? ' · лишилось ' + e.left : ''), 'note'); sfx('raze');
+    } }
   }
   for (const f of fx) f.life--;
   fx = fx.filter(f => f.life > 0);
@@ -1701,13 +1748,7 @@ function hud() {
      разом із ним мінялась ширина, і сусідні кнопки стрибали — керувати
      ходом партії ставало незручно. Кнопка тепер називає дію, а час до
      хвилі живе там, де й решта показників. */
-  setText(el.next, KIND_NAME[nx.kind] + ' ×' + nx.n + (nx.boss ? ' + супровід' : '') +
-    /* Навіть коли відлік притримано, гравець мусить бачити ЧИСЛО: інакше
-       екран просто завмирає, і незрозуміло, чи це очікування взагалі
-       колись скінчиться. Тому показуємо, скільки лишилось притримувати. */
-    (sim.phase !== 0 ? ''
-      : (sim.holdPrep && sim.holdLeft > 0) ? ' · напарник ще в бою, ' + Math.ceil(sim.holdLeft / TPS) + ' с'
-      : ' · ' + Math.ceil(sim.prep / TPS) + ' с'));
+  setText(el.next, KIND_NAME[nx.kind] + ' ×' + nx.n + (nx.boss ? ' + супровід' : ''));
   el.next.className    = 'v' + (nx.kind === 3 ? ' warn' : nx.kind === 2 ? ' calm' : '');
   // У дуелі голоси рахує duelWaveVotes (два реальні гравці), а не
   // sim.waveVotes — та дошка сама по собі сольна (nPlayers=1) і бачить
@@ -1715,11 +1756,23 @@ function hud() {
   const votes = duelBoards ? duelWaveVotes : sim.waveVotes;
   const voteOf = duelBoards ? netP() : meId();
   const voteTotal = duelBoards ? 2 : sim.nPlayers;
+  /* Кнопка називає ДІЮ і майже не міняється — щонайбільше двічі за хвилю.
+     Усе, що біжить (секунди, голоси, очікування), винесено в сусідній
+     годинник: доти воно жило в самій кнопці, мінялось щосекунди разом із
+     її шириною, і кнопки поруч стрибали. */
   setText(el.wave_, stalled ? 'Чекаю напарника…'
     : sim.phase !== 0 ? 'Хвиля ' + sim.wave + ' іде'
-    : votes.size > 0
-      ? (votes.has(voteOf) ? 'Чекаю голосів' : 'Прискорити') + ' (' + votes.size + '/' + voteTotal + ')'
-      : 'Викликати хвилю');
+    : votes.has(voteOf) ? 'Чекаю голосів'
+    : 'Викликати хвилю');
+
+  const holding = sim.phase === 0 && sim.holdPrep && sim.holdLeft > 0;
+  const secs = Math.ceil((holding ? sim.holdLeft : sim.prep) / TPS);
+  setText(el.waveClock,
+    sim.phase !== 0 ? 'хвиля йде'
+    : holding ? 'напарник ' + secs + ' с'
+    : secs + ' с' + (votes.size > 0 ? ' · ' + votes.size + '/' + voteTotal : ''));
+  el.waveClock.className = 'waveClock' +
+    (sim.phase !== 0 ? '' : holding ? ' hold' : secs <= 10 ? ' soon' : '');
   el.wave_.disabled = sim.phase !== 0 || stalled || votes.has(voteOf);
   /* Діагностика збирає рядки й пише їх у панель. Щокадру це не потрібно
      нікому — вона й так оновлюється з подій мережі, а тут лише страхує

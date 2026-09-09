@@ -34,8 +34,10 @@
       </label>
       <label class="field">Складність
         <select id="diff">
-          <option value="70">Легко</option>
-          <option value="100" selected>Норма</option>
+          <!-- Легкий за замовчуванням: саме на ньому видно радіус веж, а
+               без нього перша партія перетворюється на вгадування. -->
+          <option value="70" selected>Легко</option>
+          <option value="100">Норма</option>
           <option value="145">Важко</option>
         </select>
       </label>
@@ -95,6 +97,10 @@
          дивишся. Під полем лишились налаштування показу. -->
     <div class="stat ctl">
       <button id="btnWave" class="primary">Викликати хвилю</button>
+      <!-- Відлік стоїть ПОРУЧ із кнопкою, а не в ній: у ній він мінявся
+           щосекунди разом із шириною, і сусідні кнопки стрибали. Тут він
+           теж перед очима, але нічого не рухає. -->
+      <span class="waveClock" id="waveClock">—</span>
       <button id="btnPause">Пауза</button>
       <button id="btnSpeed">1×</button>
     </div>
